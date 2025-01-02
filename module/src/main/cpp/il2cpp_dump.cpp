@@ -16,6 +16,7 @@
 #include "log.h"
 #include "il2cpp-tabledefs.h"
 #include "il2cpp-class.h"
+#include "config_parser.h"
 
 #define DO_API(r, n, p) r (*n) p
 
@@ -426,4 +427,14 @@ void il2cpp_dump(const char *outDir) {
     }
     outStream.close();
     LOGI("dump done!");
+
+    // 在dump完成后解析配置
+    LOGI("开始解析装备配置...");
+    const char* inputPath = "/sdcard/bwxrk/config/raw/EquipConfig";
+    const char* outputPath = "/sdcard/bwxrk/config/raw/EquipConfig.json";
+    if (ConfigParser::ParseEquipConfig(inputPath, outputPath)) {
+        LOGI("装备配置解析完成");
+    } else {
+        LOGE("装备配置解析失败");
+    }
 }
