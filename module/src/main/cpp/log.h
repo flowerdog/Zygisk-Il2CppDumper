@@ -13,4 +13,28 @@
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 
+#define LOG_FILE_PATH "/sdcard/Download/bwxrk/logs.txt"
+
+void log_to_file(const char* level, const char* fmt, ...);
+
+#define LOGDF(fmt, ...) do { \
+    LOGD(fmt, ##__VA_ARGS__); \
+    log_to_file("DEBUG", fmt, ##__VA_ARGS__); \
+} while(0)
+
+#define LOGWF(fmt, ...) do { \
+    LOGW(fmt, ##__VA_ARGS__); \
+    log_to_file("WARN", fmt, ##__VA_ARGS__); \
+} while(0)
+
+#define LOGEF(fmt, ...) do { \
+    LOGE(fmt, ##__VA_ARGS__); \
+    log_to_file("ERROR", fmt, ##__VA_ARGS__); \
+} while(0)
+
+#define LOGIF(fmt, ...) do { \
+    LOGI(fmt, ##__VA_ARGS__); \
+    log_to_file("INFO", fmt, ##__VA_ARGS__); \
+} while(0)
+
 #endif //ZYGISK_IL2CPPDUMPER_LOG_H

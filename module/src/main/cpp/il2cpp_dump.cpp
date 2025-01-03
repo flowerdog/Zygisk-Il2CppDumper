@@ -426,4 +426,14 @@ void il2cpp_dump(const char *outDir) {
     }
     outStream.close();
     LOGI("dump done!");
+
+    // 在dump完成后解析配置
+    LOGI("开始解析装备配置...");
+    const char* inputPath = "/sdcard/Download/bwxrk/config/raw/EquipConfig";
+    const char* outputPath = "/sdcard/Download/bwxrk/config/raw/EquipConfig.json";
+    if (ConfigParser::ParseEquipConfig(inputPath, outputPath)) {
+        LOGI("装备配置解析完成");
+    } else {
+        LOGE("装备配置解析失败");
+    }
 }
