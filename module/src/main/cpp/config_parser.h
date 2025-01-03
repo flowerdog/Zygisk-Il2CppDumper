@@ -2,7 +2,8 @@
 #define CONFIG_PARSER_H
 
 #include <stdint.h>
-#include "il2cpp-class.h"
+#include <stdlib.h>
+#include "il2cpp-api.h"
 
 // 文件头结构
 struct ResFileHead {

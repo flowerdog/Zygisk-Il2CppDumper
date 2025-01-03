@@ -1,3 +1,6 @@
+#ifndef IL2CPP_CLASS_H
+#define IL2CPP_CLASS_H
+
 typedef uint16_t Il2CppChar;
 typedef uintptr_t il2cpp_array_size_t;
 typedef int32_t TypeDefinitionIndex;
@@ -141,3 +144,5 @@ typedef struct Il2CppArray {
     il2cpp_array_size_t max_length;
     void *vector[32];
 } Il2CppArray;
+
+#endif // IL2CPP_CLASS_H

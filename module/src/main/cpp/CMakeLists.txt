@@ -29,6 +29,8 @@ set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} ${LINKER_FLAGS}")
 
 include_directories(
         xdl/include
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${ANDROID_NDK}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include
 )
 
 aux_source_directory(xdl xdl-src)
@@ -37,6 +39,9 @@ add_library(${MODULE_NAME} SHARED
         main.cpp
         hack.cpp
         il2cpp_dump.cpp
+        log.cpp
+        config_parser.cpp
+        il2cpp-api.cpp
         ${xdl-src})
 target_link_libraries(${MODULE_NAME} log)
 

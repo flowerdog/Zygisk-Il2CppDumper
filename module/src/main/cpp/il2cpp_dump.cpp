@@ -16,27 +16,33 @@
 #include "log.h"
 #include "il2cpp-tabledefs.h"
 #include "il2cpp-class.h"
+
+#include "il2cpp-api.h"
+
+// #define DO_API(r, n, p) r (*n) p
+
+// #include "il2cpp-api-functions.h"
+// #include "il2cpp-array-functions.h"
+
+// #undef DO_API
+
 #include "config_parser.h"
-
-#define DO_API(r, n, p) r (*n) p
-
-#include "il2cpp-api-functions.h"
-
-#undef DO_API
 
 static uint64_t il2cpp_base = 0;
 
 void init_il2cpp_api(void *handle) {
-#define DO_API(r, n, p) {                      \
-    n = (r (*) p)xdl_sym(handle, #n, nullptr); \
-    if(!n) {                                   \
-        LOGW("api not found %s", #n);          \
-    }                                          \
-}
+    do_init_il2cpp_api(handle);
+// #define DO_API(r, n, p) {                      \
+//     n = (r (*) p)xdl_sym(handle, #n, nullptr); \
+//     if(!n) {                                   \
+//         LOGW("api not found %s", #n);          \
+//     }                                          \
+// }
 
-#include "il2cpp-api-functions.h"
+// #include "il2cpp-api-functions.h"
+// #include "il2cpp-array-functions.h"
 
-#undef DO_API
+// #undef DO_API
 }
 
 std::string get_method_modifier(uint32_t flags) {
@@ -246,7 +252,6 @@ std::string dump_field(Il2CppClass *klass) {
     }
     return outPut.str();
 }
-
 std::string dump_type(const Il2CppType *type) {
     std::stringstream outPut;
     auto *klass = il2cpp_class_from_type(type);

@@ -2,6 +2,8 @@
 #include "log.h"
 #include <vector>
 #include <fstream>
+#include "il2cpp-api.h"
+
 
 bool ConfigParser::ParseEquipConfig(const char* inputPath, const char* outputPath) {
     LOGIF("开始解析装备配置文件: %s", inputPath);
@@ -81,7 +83,7 @@ bool ConfigParser::ParseEquipConfig(const char* inputPath, const char* outputPat
         }
 
         // 存入数组
-        il2cpp_array_set(configArray, Il2CppObject*, i, equipConfig);
+        il2cpp_array_set_object(configArray, i, equipConfig);
         LOGIF("成功解析配置项 [%u/%u]", i + 1, head.resnum);
     }
 
@@ -179,10 +181,20 @@ bool ConfigParser::UnpackEquipConfig(Il2CppObject* equipConfig, const uint8_t* d
         return false;
     }
 
+    // 创建一个新的字节数组来存储数据
+    auto byteArrayClass = il2cpp_array_class_get(il2cpp_class_from_name(il2cpp_get_corlib(), "System", "Byte"), 1);
+    auto byteArray = il2cpp_array_new(byteArrayClass, dataLen);
+    for (size_t i = 0; i < dataLen; i++) {
+        il2cpp_array_set_byte(byteArray, i, data[i]);
+    }
+
+    // 准备参数
     void* params[] = {
-        data,
+        byteArray,
         &dataLen
     };
+
+    // 调用set方法
     Il2CppException* exc = nullptr;
     il2cpp_runtime_invoke(setMethod, readBuf, params, &exc);
     if (exc) {
@@ -253,7 +265,7 @@ bool ConfigParser::SaveAsJson(const char* outputPath, Il2CppArray* configArray) 
     // 遍历数组并序列化每个对象
     int32_t length = il2cpp_array_length(configArray);
     for (int32_t i = 0; i < length; i++) {
-        Il2CppObject* item = il2cpp_array_get(configArray, Il2CppObject*, i);
+        Il2CppObject* item = il2cpp_array_get_object(configArray, i);
         if (!item) {
             LOGEF("获取数组项失败 [%d/%d]", i + 1, length);
             outFile.close();

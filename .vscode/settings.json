@@ -1,0 +1,11 @@
+{
+    "files.associations": {
+        ".fantomasignore": "ignore",
+        "vector": "cpp",
+        "typeinfo": "cpp",
+        "variant": "cpp",
+        "cstdlib": "cpp",
+        "cinttypes": "cpp",
+        "fstream": "cpp"
+    }
+}
