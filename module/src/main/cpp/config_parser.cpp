@@ -4,9 +4,12 @@
 #include <fstream>
 #include "il2cpp-api.h"
 #include <inttypes.h>
+#include "il2cpp-tabledefs.h"
+#include "json_serializer.h"
 
 // 字段属性定义
 #define FIELD_ATTRIBUTE_STATIC 0x0010
+
 
 // 首先定义基础工具函数
 std::string ConfigParser::Utf16ToUtf8(const Il2CppChar* utf16Str, int utf16Len) {
@@ -28,249 +31,6 @@ std::string ConfigParser::Utf16ToUtf8(const Il2CppChar* utf16Str, int utf16Len) 
         }
     }
     return utf8Str;
-}
-
-// 序列化相关函数（按依赖顺序排列）
-void ConfigParser::SerializeFieldValue(std::ofstream& outFile, FieldInfo* field, void* fieldAddr, int indent) {
-    const Il2CppType* fieldType = il2cpp_field_get_type(field);
-    const char* typeName = il2cpp_type_get_name(fieldType);
-    auto fieldClass = il2cpp_class_from_type(fieldType);
-
-    if (strcmp(typeName, "System.Int32") == 0 || 
-        strcmp(typeName, "System.UInt32") == 0 ||
-        strcmp(typeName, "System.Int64") == 0 ||
-        strcmp(typeName, "System.UInt64") == 0 ||
-        strcmp(typeName, "System.Int16") == 0 ||
-        strcmp(typeName, "System.UInt16") == 0 ||
-        strcmp(typeName, "System.Byte") == 0 ||
-        strcmp(typeName, "System.SByte") == 0) {
-        uint64_t value = 0;
-        memcpy(&value, fieldAddr, il2cpp_class_value_size(fieldClass, nullptr));
-        outFile << value;
-    } else if (strcmp(typeName, "System.Boolean") == 0) {
-        bool value = false;
-        memcpy(&value, fieldAddr, sizeof(bool));
-        outFile << (value ? "true" : "false");
-    } else if (strcmp(typeName, "System.String") == 0) {
-        Il2CppString* value = *(Il2CppString**)fieldAddr;
-        outFile << "\"";
-        if (value) {
-            const Il2CppChar* utf16Str = il2cpp_string_chars(value);
-            int utf16Len = il2cpp_string_length(value);
-            std::string utf8Str = Utf16ToUtf8(utf16Str, utf16Len);
-            // 转义 JSON 字符串
-            for (char c : utf8Str) {
-                switch (c) {
-                    case '\"': outFile << "\\\""; break;
-                    case '\\': outFile << "\\\\"; break;
-                    case '\b': outFile << "\\b"; break;
-                    case '\f': outFile << "\\f"; break;
-                    case '\n': outFile << "\\n"; break;
-                    case '\r': outFile << "\\r"; break;
-                    case '\t': outFile << "\\t"; break;
-                    default:
-                        if (static_cast<unsigned char>(c) < 0x20) {
-                            char buf[8];
-                            snprintf(buf, sizeof(buf), "\\u%04x", c);
-                            outFile << buf;
-                        } else {
-                            outFile << c;
-                        }
-                }
-            }
-        }
-        outFile << "\"";
-    } else if (il2cpp_class_is_enum(fieldClass)) {
-        uint64_t value = 0;
-        memcpy(&value, fieldAddr, il2cpp_class_value_size(fieldClass, nullptr));
-        outFile << value;
-    } else if (il2cpp_class_get_rank(fieldClass) > 0) {
-        Il2CppArray* value = *(Il2CppArray**)fieldAddr;
-        SerializeArray(outFile, value, indent);
-    } else if (il2cpp_class_is_valuetype(fieldClass)) {
-        SerializeValueType(outFile, fieldClass, fieldAddr, indent);
-    } else {
-        Il2CppObject* value = *(Il2CppObject**)fieldAddr;
-        if (value) {
-            SerializeObject(outFile, value, indent);
-        } else {
-            outFile << "null";
-        }
-    }
-}
-
-void ConfigParser::SerializeValueType(std::ofstream& outFile, Il2CppClass* klass, void* value, int indent) {
-    if (il2cpp_class_is_enum(klass)) {
-        uint64_t enumValue = 0;
-        memcpy(&enumValue, value, il2cpp_class_value_size(klass, nullptr));
-        outFile << enumValue;
-        return;
-    }
-
-    outFile << "{\n";
-    std::string indentStr(indent + 2, ' ');
-    
-    void* iter = nullptr;
-    FieldInfo* field;
-    bool firstField = true;
-
-    while ((field = il2cpp_class_get_fields(klass, &iter)) != nullptr) {
-        if (il2cpp_field_get_flags(field) & FIELD_ATTRIBUTE_STATIC) {
-            continue;
-        }
-
-        if (!firstField) {
-            outFile << ",\n";
-        }
-        firstField = false;
-
-        const char* fieldName = il2cpp_field_get_name(field);
-        outFile << indentStr << "\"" << fieldName << "\": ";
-
-        size_t offset = il2cpp_field_get_offset(field);
-        void* fieldAddr = (char*)value + offset;
-        
-        SerializeFieldValue(outFile, field, fieldAddr, indent + 2);
-    }
-
-    outFile << "\n" << std::string(indent, ' ') << "}";
-}
-
-void ConfigParser::SerializeField(std::ofstream& outFile, Il2CppObject* obj, FieldInfo* field, int indent) {
-    const Il2CppType* fieldType = il2cpp_field_get_type(field);
-    const char* typeName = il2cpp_type_get_name(fieldType);
-    auto fieldClass = il2cpp_class_from_type(fieldType);
-
-    if (strcmp(typeName, "System.Int32") == 0 || 
-        strcmp(typeName, "System.UInt32") == 0 ||
-        strcmp(typeName, "System.Int64") == 0 ||
-        strcmp(typeName, "System.UInt64") == 0 ||
-        strcmp(typeName, "System.Int16") == 0 ||
-        strcmp(typeName, "System.UInt16") == 0 ||
-        strcmp(typeName, "System.Byte") == 0 ||
-        strcmp(typeName, "System.SByte") == 0) {
-        uint64_t value = 0;
-        il2cpp_field_get_value(obj, field, &value);
-        outFile << value;
-    } else if (strcmp(typeName, "System.Boolean") == 0) {
-        bool value = false;
-        il2cpp_field_get_value(obj, field, &value);
-        outFile << (value ? "true" : "false");
-    } else if (strcmp(typeName, "System.String") == 0) {
-        Il2CppString* value = nullptr;
-        il2cpp_field_get_value(obj, field, &value);
-        outFile << "\"";
-        if (value) {
-            const Il2CppChar* utf16Str = il2cpp_string_chars(value);
-            int utf16Len = il2cpp_string_length(value);
-            std::string utf8Str = Utf16ToUtf8(utf16Str, utf16Len);
-            // 转义 JSON 字符串
-            for (char c : utf8Str) {
-                switch (c) {
-                    case '\"': outFile << "\\\""; break;
-                    case '\\': outFile << "\\\\"; break;
-                    case '\b': outFile << "\\b"; break;
-                    case '\f': outFile << "\\f"; break;
-                    case '\n': outFile << "\\n"; break;
-                    case '\r': outFile << "\\r"; break;
-                    case '\t': outFile << "\\t"; break;
-                    default:
-                        if (static_cast<unsigned char>(c) < 0x20) {
-                            char buf[8];
-                            snprintf(buf, sizeof(buf), "\\u%04x", c);
-                            outFile << buf;
-                        } else {
-                            outFile << c;
-                        }
-                }
-            }
-        }
-        outFile << "\"";
-    } else if (il2cpp_class_is_enum(fieldClass)) {
-        uint64_t value = 0;
-        il2cpp_field_get_value(obj, field, &value);
-        outFile << value;
-    } else if (il2cpp_class_get_rank(fieldClass) > 0) {
-        Il2CppArray* value = nullptr;
-        il2cpp_field_get_value(obj, field, &value);
-        SerializeArray(outFile, value, indent);
-    } else if (il2cpp_class_is_valuetype(fieldClass)) {
-        void* value = alloca(il2cpp_class_value_size(fieldClass, nullptr));
-        il2cpp_field_get_value(obj, field, value);
-        SerializeValueType(outFile, fieldClass, value, indent);
-    } else {
-        Il2CppObject* value = nullptr;
-        il2cpp_field_get_value(obj, field, &value);
-        if (value) {
-            SerializeObject(outFile, value, indent);
-        } else {
-            outFile << "null";
-        }
-    }
-}
-
-void ConfigParser::SerializeArray(std::ofstream& outFile, Il2CppArray* arr, int indent) {
-    if (!arr) {
-        outFile << "null";
-        return;
-    }
-
-    auto elementClass = il2cpp_class_get_element_class(il2cpp_object_get_class((Il2CppObject*)arr));
-    int32_t length = il2cpp_array_length(arr);
-    
-    outFile << "[\n";
-    std::string indentStr(indent + 2, ' ');
-
-    for (int32_t i = 0; i < length; i++) {
-        outFile << indentStr;
-        
-        void* elementAddr = il2cpp_array_addr_with_size(arr, il2cpp_class_value_size(elementClass, nullptr), i);
-        if (il2cpp_class_is_valuetype(elementClass)) {
-            SerializeValueType(outFile, elementClass, elementAddr, indent + 2);
-        } else {
-            Il2CppObject* elementObj = *(Il2CppObject**)elementAddr;
-            if (elementObj) {
-                SerializeObject(outFile, elementObj, indent + 2);
-            } else {
-                outFile << "null";
-            }
-        }
-
-        if (i < length - 1) {
-            outFile << ",";
-        }
-        outFile << "\n";
-    }
-
-    outFile << std::string(indent, ' ') << "]";
-}
-
-void ConfigParser::SerializeObject(std::ofstream& outFile, Il2CppObject* obj, int indent) {
-    if (!obj) {
-        outFile << "null";
-        return;
-    }
-
-    auto klass = il2cpp_object_get_class(obj);
-    void* iter = nullptr;
-    FieldInfo* field;
-    bool firstField = true;
-
-    outFile << "{\n";
-    std::string indentStr(indent + 2, ' ');
-
-    while ((field = il2cpp_class_get_fields(klass, &iter)) != nullptr) {
-        if (!firstField) {
-            outFile << ",\n";
-        }
-        firstField = false;
-
-        const char* fieldName = il2cpp_field_get_name(field);
-        outFile << indentStr << "\"" << fieldName << "\": ";
-        SerializeField(outFile, obj, field, indent + 2);
-    }
-
-    outFile << "\n" << std::string(indent, ' ') << "}";
 }
 
 // 添加通用类型查找函数
@@ -695,11 +455,14 @@ bool ConfigParser::SaveAsJson(const char* outputPath, Il2CppArray* configArray) 
         return false;
     }
 
+    LOGIF("开始写入 JSON 文件: %s", outputPath);
+
     // 写入 JSON 数组开始
     outFile << "[\n";
 
     // 遍历数组并序列化每个对象
     int32_t length = il2cpp_array_length(configArray);
+    LOGIF("配置数组长度: %d", length);
     for (int32_t i = 0; i < length; i++) {
         // 获取数组元素
         void** elementAddr = (void**)((char*)configArray + kIl2CppSizeOfArray + i * sizeof(void*));
@@ -710,8 +473,9 @@ bool ConfigParser::SaveAsJson(const char* outputPath, Il2CppArray* configArray) 
             return false;
         }
 
+        LOGIF("序列化配置项 [%d/%d]", i + 1, length);
         outFile << "  ";
-        SerializeObject(outFile, item, 2);
+        JsonSerializer::SerializeObject(outFile, item, 2);
         
         if (i < length - 1) {
             outFile << ",";
@@ -728,6 +492,8 @@ bool ConfigParser::SaveAsJson(const char* outputPath, Il2CppArray* configArray) 
 }
 
 void ConfigParser::PrintEquipConfigFields(Il2CppObject* equipConfig, const char* prefix) {
+    return;
+
     auto equipConfigClass = il2cpp_object_get_class(equipConfig);
     LOGIF("%s字段值:", prefix);
     void* iter = nullptr;
