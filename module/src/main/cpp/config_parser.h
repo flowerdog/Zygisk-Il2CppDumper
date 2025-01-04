@@ -26,8 +26,9 @@ public:
 private:
     // 基础工具函数
     static std::string Utf16ToUtf8(const Il2CppChar* utf16Str, int utf16Len);
-    static Il2CppClass* FindClass(const char* assemblyName, const char* namespaze, const char* className);
-    
+    static std::vector<Il2CppClass*> FindClass(const char* assemblyName, const char* namespaze, const char* className);
+    static Il2CppClass* FindOneClass(const char* assemblyName, const char* namespaze, const char* className);
+    static Il2CppClass* FindConfigClass(const char* assemblyName, const char* namespaze, const char* className);
     // 配置解析相关函数
     static bool ReadFileHead(FILE* fp, ResFileHead& head);
     static bool ReadEquipConfig(FILE* fp, uint32_t count);

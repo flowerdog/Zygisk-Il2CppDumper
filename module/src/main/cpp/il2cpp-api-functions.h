@@ -23,7 +23,6 @@ DO_API(void, il2cpp_free, (void* ptr));
 
 // array
 DO_API(Il2CppArray*, il2cpp_array_new, (Il2CppClass* elementTypeInfo, il2cpp_array_size_t length));
-DO_API(char*, il2cpp_array_addr_with_size, (Il2CppArray* array, int32_t size, uintptr_t idx));
 DO_API(Il2CppClass*, il2cpp_array_class_get, (Il2CppClass* element_class, uint32_t rank));
 DO_API(uint32_t, il2cpp_array_length, (Il2CppArray* array));
 

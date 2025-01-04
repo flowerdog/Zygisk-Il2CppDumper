@@ -9,12 +9,21 @@ std::string Utf16ToUtf8(const Il2CppChar* utf16Str, int utf16Len) {
     std::string utf8Str;
     for (int i = 0; i < utf16Len; i++) {
         Il2CppChar ch = utf16Str[i];
-        if (ch <= 0x7F) {
+        if (ch == '\n') {
+            utf8Str += "\\n";
+        } else if (ch == '\r') {
+            utf8Str += "\\r"; 
+        } else if (ch == '"') {
+            utf8Str += "\\\"";
+        } else if (ch <= 0x7F) {
+            // ASCII 字符
             utf8Str += static_cast<char>(ch);
         } else if (ch <= 0x7FF) {
+            // 2 字节 UTF-8
             utf8Str += static_cast<char>(0xC0 | (ch >> 6));
             utf8Str += static_cast<char>(0x80 | (ch & 0x3F));
         } else {
+            // 3 字节 UTF-8
             utf8Str += static_cast<char>(0xE0 | (ch >> 12));
             utf8Str += static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
             utf8Str += static_cast<char>(0x80 | (ch & 0x3F));

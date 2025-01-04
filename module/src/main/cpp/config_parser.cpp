@@ -6,6 +6,7 @@
 #include <inttypes.h>
 #include "il2cpp-tabledefs.h"
 #include "json_serializer.h"
+#include <unordered_map>
 
 // 字段属性定义
 #define FIELD_ATTRIBUTE_STATIC 0x0010
@@ -33,353 +34,177 @@ std::string ConfigParser::Utf16ToUtf8(const Il2CppChar* utf16Str, int utf16Len) 
     return utf8Str;
 }
 
-// 添加通用类型查找函数
-Il2CppClass* ConfigParser::FindClass(const char* assemblyName, const char* namespaze, const char* className) {
-    auto domain = il2cpp_domain_get();
-    size_t size;
-    auto assemblies = il2cpp_domain_get_assemblies(domain, &size);
-    Il2CppClass* foundClass = nullptr;
-    int foundCount = 0;
+Il2CppClass* ConfigParser::FindConfigClass(const char* assemblyName, const char* namespaze, const char* className) {
+    auto classes = FindClass(assemblyName, namespaze, className);
+    if (classes.empty()) {
+        return nullptr;
+    }
+
+    // 单个类直接返回
+    if (classes.size() == 1) {
+        auto klass = classes[0];
+        return klass;
+    }
+
+    // 遍历类查找包含必需方法的类
+    for (auto klass : classes) {
+        void* iter = nullptr;
+        int methodCount = 0;
+        const MethodInfo* method = nullptr;
+        
+        while ((method = il2cpp_class_get_methods(klass, &iter)) != nullptr) {
+            if (!(il2cpp_method_get_flags(method, nullptr) & METHOD_ATTRIBUTE_PUBLIC)) {
+                continue;
+            }
+
+            const char* name = il2cpp_method_get_name(method);
+            if (strcmp(name, "create") == 0 || 
+                strcmp(name, "pack") == 0 || 
+                strcmp(name, "unpack") == 0) {
+                methodCount++;
+            }
+        }
+        
+        if (methodCount == 3) {
+            LOGIF("找到目标类: %s, 程序集: %s, 命名空间: %s", 
+                il2cpp_class_get_name(klass),
+                il2cpp_class_get_assemblyname(klass),
+                il2cpp_class_get_namespace(klass));
+            return klass;
+        }
+    }
     
-    // 如果指定了程序集名称，只在指定程序集中查找
-    if (assemblyName) {
-        // LOGIF("在程序集 %s 中查找类型 %s.%s", assemblyName, namespaze ? namespaze : "<any>", className);
-        for (size_t i = 0; i < size; i++) {
-            auto image = il2cpp_assembly_get_image(assemblies[i]);
-            const char* currentAssemblyName = il2cpp_image_get_name(image);
-            
-            if (strcmp(currentAssemblyName, assemblyName) == 0) {
-                if (namespaze) {
-                    auto result = il2cpp_class_from_name(image, namespaze, className);
-                    if (result) {
-                        LOGIF("在程序集 %s 中找到类型 %s.%s", assemblyName, namespaze, className);
-                        return result;
-                    }
-                } else {
-                    // 遍历所有类型
-                    size_t classCount = il2cpp_image_get_class_count(image);
-                    for (size_t j = 0; j < classCount; j++) {
-                        Il2CppClass* klass = (Il2CppClass*)il2cpp_image_get_class(image, j);
-                        if (strcmp(il2cpp_class_get_name(klass), className) == 0) {
-                            foundClass = klass;
-                            foundCount++;
-                            LOGIF("在程序集 %s 命名空间 %s 中找到类型 %s", 
-                                assemblyName, 
-                                il2cpp_class_get_namespace(klass), 
-                                className);
-                        }
-                    }
-                }
-            }
-        }
-    } else {
-        // 遍历所有程序集
-        LOGIF("在所有程序集中查找类型 %s", className);
-        for (size_t i = 0; i < size; i++) {
-            auto image = il2cpp_assembly_get_image(assemblies[i]);
-            const char* currentAssemblyName = il2cpp_image_get_name(image);
-            
-            if (namespaze) {
-                auto result = il2cpp_class_from_name(image, namespaze, className);
-                if (result) {
-                    foundClass = result;
-                    foundCount++;
-                    LOGIF("在程序集 %s 命名空间 %s 中找到类型 %s", 
-                        currentAssemblyName, 
-                        namespaze, 
-                        className);
-                }
-            } else {
-                // 遍历所有类型
-                size_t classCount = il2cpp_image_get_class_count(image);
-                for (size_t j = 0; j < classCount; j++) {
-                    Il2CppClass* klass = (Il2CppClass*)il2cpp_image_get_class(image, j);
-                    if (strcmp(il2cpp_class_get_name(klass), className) == 0) {
-                        foundClass = klass;
-                        foundCount++;
-                        LOGIF("在程序集 %s 命名空间 %s 中找到类型 %s", 
-                            currentAssemblyName, 
-                            il2cpp_class_get_namespace(klass), 
-                            className);
-                    }
-                }
-            }
-        }
-    }
-
-    if (foundCount > 1) {
-        LOGWF("警告：找到多个同名类型 %s，总共 %d 个", className, foundCount);
-    }
-
-    if (foundClass) {
-        return foundClass;
-    }
-
-    LOGEF("未找到类型 %s", className);
+    LOGEF("未找到包含必需方法的类");
     return nullptr;
 }
 
-bool ConfigParser::ParseEquipConfig(const char* inputPath, const char* outputPath) {
-    LOGIF("开始解析装备配置文件: %s", inputPath);
+Il2CppClass* ConfigParser::FindOneClass(const char* assemblyName, const char* namespaze, const char* className) {
+    auto classes = FindClass(assemblyName, namespaze, className);
+    if (classes.empty()) {
+        return nullptr;
+    }
+    return classes[0];
+}
+
+// 添加静态缓存
+static std::unordered_map<std::string, std::vector<Il2CppClass*>> classCache;
+static bool hasLoggedTypes = false;
+
+// FindClass 函数用于查找 IL2CPP 类型
+// 主要功能:
+// 1. 参数检查和缓存查找
+// 2. 获取 IL2CPP domain 和程序集列表
+// 3. 遍历程序集查找类型:
+//    - 如果指定了程序集名称,只在指定程序集中查找
+//    - 如果指定了命名空间,直接使用 il2cpp_class_from_name 查找
+//    - 否则遍历所有类型进行匹配
+// 4. 记录查找结果并输出日志
+// 5. 将结果保存到缓存
+std::vector<Il2CppClass*> ConfigParser::FindClass(const char* assemblyName, const char* namespaze, const char* className) {
+    // 检查参数
+    if (!className) {
+        LOGEF("!!!类名不能为空");
+        return {};
+    }
+
+    // 构建缓存键
+    std::string cacheKey = std::string(className) + "|" + 
+                          (namespaze ? namespaze : "") + "|" + 
+                          (assemblyName ? assemblyName : "");
     
-    // 打开输入文件
-    FILE* fp = fopen(inputPath, "rb");
-    if (!fp) {
-        LOGEF("无法打开输入文件: %s", inputPath);
-        return false;
+    // 检查缓存
+    auto it = classCache.find(cacheKey);
+    if (it != classCache.end()) {
+        return it->second;
     }
 
-    // 读取文件头
-    ResFileHead head;
-    if (!ReadFileHead(fp, head)) {
-        LOGEF("读取文件头失败");
-        fclose(fp);
-        return false;
+    auto domain = il2cpp_domain_get();
+    if (!domain) {
+        LOGEF("!!!获取 IL2CPP domain 失败");
+        return {};
     }
 
-    // 验证文件头tag
-    if (head.tag != 0x00002DEF) {
-        LOGEF("无效的文件头tag: 0x%08X", head.tag);
-        fclose(fp);
-        return false;
+    size_t size;
+    auto assemblies = il2cpp_domain_get_assemblies(domain, &size);
+    if (!assemblies || size == 0) {
+        LOGEF("!!!获取程序集列表失败");
+        return {};
     }
 
-    // LOGIF("文件头tag验证成功");
+    std::vector<Il2CppClass*> foundClasses;
+    std::vector<std::pair<std::string, std::string>> foundLocations;
 
-    // 获取剩余数据大小
-    size_t dataSize = head.len - 20;  // 文件头大小为20字节
-    std::vector<uint8_t> buffer(dataSize);
-    
-    if (fread(buffer.data(), 1, dataSize, fp) != dataSize) {
-        LOGEF("读取文件数据失败");
-        fclose(fp);
-        return false;
-    }
-    
-    // LOGIF("读取文件数据成功");
-    fclose(fp);
+    // 遍历程序集
+    for (size_t i = 0; i < size; i++) {
+        auto assembly = assemblies[i];
+        if (!assembly) continue;
 
-    // 创建并初始化 PbReadBuf
-    auto pbReadBufClass = FindClass("DodProtoBase.dll", "ProtoBase", "PbReadBuf");
-    if (!pbReadBufClass) {
-        LOGEF("无法获取 PbReadBuf 类");
-        return false;
-    }
-    // LOGIF("获取 PbReadBuf 类成功");
+        auto image = il2cpp_assembly_get_image(assembly);
+        if (!image) continue;
 
-    auto readBuf = il2cpp_object_new(pbReadBufClass);
-    if (!readBuf) {
-        LOGEF("创建 PbReadBuf 对象失败");
-        return false;
-    }
+        const char* currentAssemblyName = il2cpp_image_get_name(image);
+        if (!currentAssemblyName) continue;
 
-    // LOGIF("创建 PbReadBuf 对象成功");
-    // 调用构造函数
-    auto ctor = il2cpp_class_get_method_from_name(pbReadBufClass, ".ctor", 0);
-    if (!ctor) {
-        LOGEF("找不到 PbReadBuf 的构造函数");
-        return false;
-    }
-
-    // LOGIF("获取 PbReadBuf 的构造函数成功");
-
-    Il2CppException* exc = nullptr;
-    il2cpp_runtime_invoke(ctor, readBuf, nullptr, &exc);
-    if (exc) {
-        LOGEF("调用 PbReadBuf 构造函数失败");
-        return false;
-    }
-
-    // LOGIF("调用 PbReadBuf 构造函数成功");
-
-    // 创建字节数组并设置数据
-    auto byteArrayClass = il2cpp_array_class_get(
-        il2cpp_class_from_name(il2cpp_get_corlib(), "System", "Byte"), 
-        1
-    );
-    // LOGIF("获取 Byte 数组类成功");
-    
-    auto byteArray = il2cpp_array_new(byteArrayClass, dataSize);
-    if (!byteArray) {
-        LOGEF("创建字节数组失败");
-        return false;
-    }
-
-    // LOGIF("创建字节数组成功");
-
-    // 复制数据到字节数组
-    uint8_t* arrayData = (uint8_t*)((char*)byteArray + kIl2CppSizeOfArray);
-    memcpy(arrayData, buffer.data(), dataSize);
-
-    // LOGIF("复制数据到字节数组成功");
-
-    // 调用 set 方法设置数据
-    auto setMethod = il2cpp_class_get_method_from_name(pbReadBufClass, "set", 2);
-    if (!setMethod) {
-        LOGEF("找不到 PbReadBuf.set 方法");
-        return false;
-    }
-
-    // LOGIF("获取 PbReadBuf.set 方法成功");
-
-    int32_t len = static_cast<int32_t>(dataSize);
-    void* setParams[] = { byteArray, &len };
-    // LOGIF("准备调用 set 方法，参数: byteArray=%p, len=%d", byteArray, len);
-    exc = nullptr;
-    il2cpp_runtime_invoke(setMethod, readBuf, setParams, &exc);
-    if (exc) {
-        auto excClass = il2cpp_object_get_class((Il2CppObject*)exc);
-        const char* excName = excClass ? il2cpp_class_get_name(excClass) : "Unknown";
-        LOGEF("调用 PbReadBuf.set 方法失败: %s", excName);
-        return false;
-    }
-
-    // LOGIF("调用 PbReadBuf.set 方法成功，数据大小: %d 字节", len);
-    
-    // 检查 readBuf 的一些属性
-    auto bufferField = il2cpp_class_get_field_from_name(pbReadBufClass, "buffer");
-    auto posField = il2cpp_class_get_field_from_name(pbReadBufClass, "pos");
-    auto lenField = il2cpp_class_get_field_from_name(pbReadBufClass, "len");
-    
-    if (bufferField && posField && lenField) {
-        void* buffer = nullptr;
-        int32_t pos = 0;
-        int32_t bufLen = 0;
-        
-        il2cpp_field_get_value((Il2CppObject*)readBuf, bufferField, &buffer);
-        il2cpp_field_get_value((Il2CppObject*)readBuf, posField, &pos);
-        il2cpp_field_get_value((Il2CppObject*)readBuf, lenField, &bufLen);
-        
-        LOGIF("PbReadBuf 状态: buffer=%p, pos=%d, len=%d", buffer, pos, bufLen);
-    }
-
-    // 获取 EquipConfig 类并创建结果数组
-    auto equipConfigClass = GetEquipConfigClass();
-    if (!equipConfigClass) {
-        LOGEF("获取 EquipConfig 类失败");
-        return false;
-    }
-
-    LOGIF("获取 EquipConfig 类成功");
-    
-    // 打印类的字段信息
-    void* iter = nullptr;
-    FieldInfo* field;
-    LOGIF("EquipConfig 类的字段列表:");
-    while ((field = il2cpp_class_get_fields(equipConfigClass, &iter)) != nullptr) {
-        const char* fieldName = il2cpp_field_get_name(field);
-        const char* fieldType = il2cpp_type_get_name(il2cpp_field_get_type(field));
-        LOGIF("  字段: %s, 类型: %s", fieldName, fieldType);
-    }
-    
-    // 打印类的方法信息
-    iter = nullptr;
-    const MethodInfo* method;
-    LOGIF("EquipConfig 类的方法列表:");
-    while ((method = il2cpp_class_get_methods(equipConfigClass, &iter)) != nullptr) {
-        const char* methodName = il2cpp_method_get_name(method);
-        LOGIF("  方法: %s, 参数个数: %d", methodName, il2cpp_method_get_param_count(method));
-    }
-
-    auto configArray = il2cpp_array_new(equipConfigClass, head.resnum);
-    if (!configArray) {
-        LOGEF("创建配置数组失败");
-        return false;
-    }
-    // LOGIF("创建配置数组成功");
-
-    // 循环解析每个配置项
-    for (uint32_t i = 0; i < head.resnum; i++) {
-        // LOGIF("开始解析配置项 [%u/%u]", i + 1, head.resnum);
-        // 创建 EquipConfig 对象
-        auto equipConfig = il2cpp_object_new(equipConfigClass);
-        if (!equipConfig) {
-            LOGEF("创建 EquipConfig 对象失败 [%u/%u]", i + 1, head.resnum);
-            return false;
-        }
-        LOGIF("创建 EquipConfig 对象成功");
-
-        // 调用构造函数
-        auto ctor = il2cpp_class_get_method_from_name(equipConfigClass, ".ctor", 0);
-        if (!ctor) {
-            LOGEF("找不到 EquipConfig 构造函数");
-            return false;
-        }
-        exc = nullptr;
-        il2cpp_runtime_invoke(ctor, equipConfig, nullptr, &exc);
-        if (exc) {
-            LOGEF("调用 EquipConfig 构造函数失败");
-            return false;
+        // 如果指定了程序集名称且不匹配,跳过此程序集
+        if (assemblyName && strcmp(currentAssemblyName, assemblyName) != 0) {
+            continue;
         }
 
-        // 调用 create 方法初始化对象
-        auto createMethod = il2cpp_class_get_method_from_name(equipConfigClass, "create", 0);
-        if (!createMethod) {
-            LOGEF("找不到 EquipConfig.create 方法");
-            return false;
+        // 如果指定了命名空间,直接查找
+        if (namespaze) {
+            auto result = il2cpp_class_from_name(image, namespaze, className);
+            if (result) {
+                foundClasses.push_back(result);
+                foundLocations.push_back({currentAssemblyName, namespaze});
+            }
+            continue;
         }
-        // LOGIF("获取 EquipConfig.create 方法成功");
 
-        exc = nullptr;
-        il2cpp_runtime_invoke(createMethod, equipConfig, nullptr, &exc);
-        if (exc) {
-            auto excClass = il2cpp_object_get_class((Il2CppObject*)exc);
-            const char* excName = excClass ? il2cpp_class_get_name(excClass) : "Unknown";
-            LOGEF("调用 EquipConfig.create 方法失败: %s", excName);
-            return false;
+        // 遍历所有类型
+        size_t classCount = il2cpp_image_get_class_count(image);
+        for (size_t j = 0; j < classCount; j++) {
+            Il2CppClass* klass = (Il2CppClass*)(il2cpp_image_get_class(image, j));
+            if (!klass) continue;
+
+            const char* klassName = il2cpp_class_get_name(klass);
+            if (!klassName) continue;
+
+            if (!hasLoggedTypes && !assemblyName) {
+                LOGIF("遍历类型: %s", klassName);
+            }
+
+            if (strcmp(klassName, className) == 0) {
+                foundClasses.push_back(klass);
+                const char* ns = il2cpp_class_get_namespace(klass);
+                foundLocations.push_back({currentAssemblyName, ns ? ns : ""});
+            }
         }
-        // LOGIF("调用 EquipConfig.create 方法成功");
-
-        // 打印 unpack 前的字段值
-        PrintEquipConfigFields(equipConfig, "unpack 前的");
-
-        // 调用 unpack 方法
-        auto unpackMethod = il2cpp_class_get_method_from_name(equipConfigClass, "unpack", 3);
-        if (!unpackMethod) {
-            LOGEF("找不到 EquipConfig.unpack 方法");
-            return false;
-        }
-        LOGIF("获取 EquipConfig.unpack 方法成功");
-
-        uint32_t cutVer = 0;
-        void* unpackParams[] = { readBuf, &cutVer, nullptr };
-        LOGIF("准备调用 EquipConfig.unpack 方法，参数: readBuf=%p, cutVer=%u, stack=%p", readBuf, cutVer, nullptr);
-        exc = nullptr;
-        il2cpp_runtime_invoke(unpackMethod, equipConfig, unpackParams, &exc);
-        if (exc) {
-            auto excClass = il2cpp_object_get_class((Il2CppObject*)exc);
-            const char* excName = excClass ? il2cpp_class_get_name(excClass) : "Unknown";
-            LOGEF("调用 EquipConfig.unpack 方法失败 [%u/%u]: %s", i + 1, head.resnum, excName);
-                    // 打印 unpack 后的字段值
-            PrintEquipConfigFields(equipConfig, "unpack 后的");
-            return false;
-        }
-        LOGIF("调用 EquipConfig.unpack 方法成功");
-
-        // 打印 unpack 后的字段值
-        PrintEquipConfigFields(equipConfig, "unpack 后的");
-
-        // 存入数组
-        void** elementAddr = (void**)((char*)configArray + kIl2CppSizeOfArray + i * sizeof(void*));
-        *elementAddr = equipConfig;
-        LOGIF("成功解析配置项 [%u/%u]", i + 1, head.resnum);
     }
 
-    // 保存为 JSON
-    if (!SaveAsJson(outputPath, configArray)) {
-        LOGEF("保存 JSON 文件失败");
-        return false;
+    if (!assemblyName) {
+        hasLoggedTypes = true;
     }
 
-    LOGIF("成功解析所有配置并保存到: %s", outputPath);
-    return true;
+    // 记录查找结果
+    if (foundClasses.size() > 1) {
+        LOGWF("!!!警告：找到多个同名类型 %s，总共 %zu 个", className, foundClasses.size());
+        for (const auto& loc : foundLocations) {
+            LOGWF("!!!  - 程序集: %s, 命名空间: %s", loc.first.c_str(), loc.second.c_str());
+        }
+    } else if (foundClasses.empty()) {
+        LOGEF("!!!未找到类型 %s", className);
+    }
+
+    // 保存到缓存
+    classCache[cacheKey] = foundClasses;
+    return foundClasses;
 }
 
 bool ConfigParser::ReadFileHead(FILE* fp, ResFileHead& head) {
     // 读取文件头结构
     ResFileHead raw_head;
     if (fread(&raw_head, sizeof(raw_head), 1, fp) != 1) {
-        LOGEF("读取文件头失败");
+        LOGEF("!!!读取文件头失败");
         return false;
     }
     
@@ -409,8 +234,8 @@ bool ConfigParser::ReadFileHead(FILE* fp, ResFileHead& head) {
                 ((raw_head.crc32 & 0x0000FF00) << 8) |
                 ((raw_head.crc32 & 0x000000FF) << 24);
     
-    LOGIF("读取到文件头: tag=0x%08X, len=%u, version=%u, resnum=%u, crc32=0x%08X",
-          head.tag, head.len, head.version, head.resnum, head.crc32);
+    // LOGIF("读取到文件头: tag=0x%08X, len=%u, version=%u, resnum=%u, crc32=0x%08X",
+        //   head.tag, head.len, head.version, head.resnum, head.crc32);
           
     return true;
 }
@@ -427,31 +252,11 @@ void print_all_types(const Il2CppImage* image) {
 }
 
 
-Il2CppClass* ConfigParser::GetEquipConfigClass() {
-    // 先尝试精确查找
-    auto result = FindClass("GameProto.dll", "ResDef", "EquipConfig");
-    if (result) {
-        return result;
-    }
-    
-    // 如果精确查找失败，尝试在所有程序集中查找
-    LOGIF("精确查找失败，尝试在所有程序集中查找 EquipConfig 类");
-    return FindClass(nullptr, nullptr, "EquipConfig");
-}
-
-Il2CppObject* ConfigParser::CreateEquipConfigObject() {
-    auto equipConfigClass = GetEquipConfigClass();
-    if (!equipConfigClass) {
-        return nullptr;
-    }
-    return il2cpp_object_new(equipConfigClass);
-}
-
 bool ConfigParser::SaveAsJson(const char* outputPath, Il2CppArray* configArray) {
     // 创建输出文件
     std::ofstream outFile(outputPath);
     if (!outFile.is_open()) {
-        LOGEF("无法创建输出文件: %s", outputPath);
+        LOGEF("!!!无法创建输出文件: %s", outputPath);
         return false;
     }
 
@@ -468,7 +273,7 @@ bool ConfigParser::SaveAsJson(const char* outputPath, Il2CppArray* configArray) 
         void** elementAddr = (void**)((char*)configArray + kIl2CppSizeOfArray + i * sizeof(void*));
         Il2CppObject* item = (Il2CppObject*)*elementAddr;
         if (!item) {
-            LOGEF("数组元素为空 [%d/%d]", i + 1, length);
+            LOGEF("!!!数组元素为空 [%d/%d]", i + 1, length);
             outFile.close();
             return false;
         }
@@ -540,10 +345,11 @@ bool ConfigParser::ParseAllConfigs(const std::string& dirPath, const std::string
     LOGIF("开始解析目录下的所有配置文件: %s", dirPath.c_str());
     DIR* dir = opendir(dirPath.c_str());
     if (!dir) {
-        LOGEF("无法打开目录: %s", dirPath.c_str());
+        LOGEF("!!!无法打开目录: %s", dirPath.c_str());
         return false;
     }
 
+    bool allSuccess = true;
     struct dirent* entry;
     while ((entry = readdir(dir)) != nullptr) {
         std::string fileName = entry->d_name;
@@ -556,74 +362,76 @@ bool ConfigParser::ParseAllConfigs(const std::string& dirPath, const std::string
 
         // 根据文件名查找类型
         std::string typeName = fileName.substr(0, fileName.find_last_of('.'));
-        Il2CppClass* klass = FindClass(nullptr, nullptr, typeName.c_str());
+        auto klass = FindConfigClass(nullptr, nullptr, typeName.c_str());
         if (!klass) {
-            LOGEF("找不到类型: %s", typeName.c_str());
+            LOGEF("!!!找不到类型: %s", typeName.c_str());
+            allSuccess = false;
             continue;
         }
 
-        // 解析配置文件
         if (!ParseConfigFile(filePath, klass, outputDir)) {
-            LOGEF("解析配置文件失败: %s", filePath.c_str());
+            LOGEF("!!!解析文件失败: %s", filePath.c_str());
+            allSuccess = false;
+            continue;
         }
     }
 
     closedir(dir);
     LOGIF("所有配置文件解析完成!");
-    return true;
+    return allSuccess;
 }
 
 bool ConfigParser::ParseConfigFile(const std::string& filePath, Il2CppClass* klass, const std::string& outputDir) {
-    LOGIF("开始解析配置文件: %s", filePath.c_str());
+    // LOGIF("开始解析配置文件: %s", filePath.c_str());
     
     // 打开输入文件
     FILE* fp = fopen(filePath.c_str(), "rb");
     if (!fp) {
-        LOGEF("无法打开输入文件: %s", filePath.c_str());
+        LOGEF("!!!无法打开输入文件: %s", filePath.c_str());
         return false;
     }
 
     // 读取文件头
     ResFileHead head;
     if (!ReadFileHead(fp, head)) {
-        LOGEF("读取文件头失败");
+        LOGEF("!!!读取文件头失败");
         fclose(fp);
         return false;
     }
 
     // 验证文件头tag
     if (head.tag != 0x00002DEF) {
-        LOGEF("无效的文件头tag: 0x%08X", head.tag);
+        LOGEF("!!!无效的文件头tag: 0x%08X", head.tag);
         fclose(fp);
         return false;
     }
 
-    LOGIF("文件头tag验证成功");
+    // LOGIF("文件头tag验证成功");
 
     // 获取剩余数据大小
     size_t dataSize = head.len - 20;  // 文件头大小为20字节
     std::vector<uint8_t> buffer(dataSize);
     
     if (fread(buffer.data(), 1, dataSize, fp) != dataSize) {
-        LOGEF("读取文件数据失败");
+        LOGEF("!!!读取文件数据失败");
         fclose(fp);
         return false;
     }
     
-    LOGIF("读取文件数据成功");
+    // LOGIF("读取文件数据成功");
     fclose(fp);
 
     // 创建并初始化 PbReadBuf
-    auto pbReadBufClass = FindClass("DodProtoBase.dll", "ProtoBase", "PbReadBuf");
+    auto pbReadBufClass = FindOneClass("DodProtoBase.dll", "ProtoBase", "PbReadBuf");
     if (!pbReadBufClass) {
-        LOGEF("无法获取 PbReadBuf 类");
+        LOGEF("!!!无法获取 PbReadBuf 类");
         return false;
     }
     // LOGIF("获取 PbReadBuf 类成功");
 
     auto readBuf = il2cpp_object_new(pbReadBufClass);
     if (!readBuf) {
-        LOGEF("创建 PbReadBuf 对象失败");
+        LOGEF("!!!创建 PbReadBuf 对象失败");
         return false;
     }
 
@@ -631,7 +439,7 @@ bool ConfigParser::ParseConfigFile(const std::string& filePath, Il2CppClass* kla
     // 调用构造函数
     auto ctor = il2cpp_class_get_method_from_name(pbReadBufClass, ".ctor", 0);
     if (!ctor) {
-        LOGEF("找不到 PbReadBuf 的构造函数");
+        LOGEF("!!!找不到 PbReadBuf 的构造函数");
         return false;
     }
 
@@ -640,7 +448,7 @@ bool ConfigParser::ParseConfigFile(const std::string& filePath, Il2CppClass* kla
     Il2CppException* exc = nullptr;
     il2cpp_runtime_invoke(ctor, readBuf, nullptr, &exc);
     if (exc) {
-        LOGEF("调用 PbReadBuf 构造函数失败");
+        LOGEF("!!!调用 PbReadBuf 构造函数失败");
         return false;
     }
 
@@ -655,7 +463,7 @@ bool ConfigParser::ParseConfigFile(const std::string& filePath, Il2CppClass* kla
     
     auto byteArray = il2cpp_array_new(byteArrayClass, dataSize);
     if (!byteArray) {
-        LOGEF("创建字节数组失败");
+        LOGEF("!!!创建字节数组失败");
         return false;
     }
 
@@ -670,7 +478,7 @@ bool ConfigParser::ParseConfigFile(const std::string& filePath, Il2CppClass* kla
     // 调用 set 方法设置数据
     auto setMethod = il2cpp_class_get_method_from_name(pbReadBufClass, "set", 2);
     if (!setMethod) {
-        LOGEF("找不到 PbReadBuf.set 方法");
+        LOGEF("!!!找不到 PbReadBuf.set 方法");
         return false;
     }
 
@@ -684,7 +492,7 @@ bool ConfigParser::ParseConfigFile(const std::string& filePath, Il2CppClass* kla
     if (exc) {
         auto excClass = il2cpp_object_get_class((Il2CppObject*)exc);
         const char* excName = excClass ? il2cpp_class_get_name(excClass) : "Unknown";
-        LOGEF("调用 PbReadBuf.set 方法失败: %s", excName);
+        LOGEF("!!!调用 PbReadBuf.set 方法失败: %s", excName);
         return false;
     }
 
@@ -693,7 +501,7 @@ bool ConfigParser::ParseConfigFile(const std::string& filePath, Il2CppClass* kla
     // 创建配置数组
     auto configArray = il2cpp_array_new(klass, head.resnum);
     if (!configArray) {
-        LOGEF("创建配置数组失败");
+        LOGEF("!!!创建配置数组失败");
         return false;
     }
     // LOGIF("创建配置数组成功");
@@ -704,7 +512,7 @@ bool ConfigParser::ParseConfigFile(const std::string& filePath, Il2CppClass* kla
         // 创建配置对象
         auto configObject = il2cpp_object_new(klass);
         if (!configObject) {
-            LOGEF("创建配置对象失败 [%u/%u]", i + 1, head.resnum);
+            LOGEF("!!!创建配置对象失败 [%u/%u]", i + 1, head.resnum);
             return false;
         }
         // LOGIF("创建配置对象成功");
@@ -712,38 +520,35 @@ bool ConfigParser::ParseConfigFile(const std::string& filePath, Il2CppClass* kla
         // 调用构造函数
         auto ctor = il2cpp_class_get_method_from_name(klass, ".ctor", 0);
         if (!ctor) {
-            LOGEF("找不到构造函数");
+            LOGEF("!!!找不到构造函数");
             return false;
         }
         exc = nullptr;
         il2cpp_runtime_invoke(ctor, configObject, nullptr, &exc);
         if (exc) {
-            LOGEF("调用构造函数失败");
+            LOGEF("!!!调用构造函数失败");
             return false;
         }
 
-        // 调用 create 方法初始化对象
+        // 检查是否存在 create 方法，如果存在则调用
         auto createMethod = il2cpp_class_get_method_from_name(klass, "create", 0);
-        if (!createMethod) {
-            LOGEF("找不到 create 方法");
-            return false;
+        if (createMethod) {
+            // LOGIF("获取 create 方法成功");
+            exc = nullptr;
+            il2cpp_runtime_invoke(createMethod, configObject, nullptr, &exc);
+            if (exc) {
+                auto excClass = il2cpp_object_get_class((Il2CppObject*)exc);
+                const char* excName = excClass ? il2cpp_class_get_name(excClass) : "Unknown";
+                LOGEF("!!!调用 create 方法失败: %s", excName);
+                return false;
+            }
+            // LOGIF("调用 create 方法成功");
         }
-        // LOGIF("获取 create 方法成功");
-
-        exc = nullptr;
-        il2cpp_runtime_invoke(createMethod, configObject, nullptr, &exc);
-        if (exc) {
-            auto excClass = il2cpp_object_get_class((Il2CppObject*)exc);
-            const char* excName = excClass ? il2cpp_class_get_name(excClass) : "Unknown";
-            LOGEF("调用 create 方法失败: %s", excName);
-            return false;
-        }
-        // LOGIF("调用 create 方法成功");
 
         // 调用 unpack 方法
         auto unpackMethod = il2cpp_class_get_method_from_name(klass, "unpack", 3);
         if (!unpackMethod) {
-            LOGEF("找不到 unpack 方法");
+            LOGEF("!!!找不到 unpack 方法");
             return false;
         }
         // LOGIF("获取 unpack 方法成功");
@@ -756,7 +561,7 @@ bool ConfigParser::ParseConfigFile(const std::string& filePath, Il2CppClass* kla
         if (exc) {
             auto excClass = il2cpp_object_get_class((Il2CppObject*)exc);
             const char* excName = excClass ? il2cpp_class_get_name(excClass) : "Unknown";
-            LOGEF("调用 unpack 方法失败 [%u/%u]: %s", i + 1, head.resnum, excName);
+            LOGEF("!!!调用 unpack 方法失败 [%u/%u]: %s", i + 1, head.resnum, excName);
             return false;
         }
         // LOGIF("调用 unpack 方法成功");
@@ -771,7 +576,7 @@ bool ConfigParser::ParseConfigFile(const std::string& filePath, Il2CppClass* kla
     std::string outputPath = outputDir + "/" + il2cpp_class_get_name(klass) + ".json";
     std::ofstream outFile(outputPath);
     if (!outFile.is_open()) {
-        LOGEF("无法创建输出文件: %s", outputPath.c_str());
+        LOGEF("!!!无法创建输出文件: %s", outputPath.c_str());
         return false;
     }
 
@@ -792,6 +597,6 @@ bool ConfigParser::ParseConfigFile(const std::string& filePath, Il2CppClass* kla
     outFile << "]\n";
     outFile.close();
 
-    LOGIF("成功导出 JSON 文件: %s", outputPath.c_str());
+    // LOGIF("成功导出 JSON 文件: %s", outputPath.c_str());
     return true;
 } 
