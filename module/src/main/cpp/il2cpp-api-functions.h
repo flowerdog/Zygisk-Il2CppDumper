@@ -22,14 +22,10 @@ DO_API(void*, il2cpp_alloc, (size_t size));
 DO_API(void, il2cpp_free, (void* ptr));
 
 // array
-DO_API(Il2CppClass*, il2cpp_array_class_get, (Il2CppClass * element_class, uint32_t rank));
-DO_API(uint32_t, il2cpp_array_length, (Il2CppArray * array));
-DO_API(uint32_t, il2cpp_array_get_byte_length, (Il2CppArray * array));
-DO_API(Il2CppArray*, il2cpp_array_new, (Il2CppClass * elementTypeInfo, il2cpp_array_size_t length));
-DO_API(Il2CppArray*, il2cpp_array_new_specific, (Il2CppClass * arrayTypeInfo, il2cpp_array_size_t length));
-DO_API(Il2CppArray*, il2cpp_array_new_full, (Il2CppClass * array_class, il2cpp_array_size_t * lengths, il2cpp_array_size_t * lower_bounds));
-DO_API(Il2CppClass*, il2cpp_bounded_array_class_get, (Il2CppClass * element_class, uint32_t rank, bool bounded));
-DO_API(int, il2cpp_array_element_size, (const Il2CppClass * array_class));
+DO_API(Il2CppArray*, il2cpp_array_new, (Il2CppClass* elementTypeInfo, il2cpp_array_size_t length));
+DO_API(char*, il2cpp_array_addr_with_size, (Il2CppArray* array, int32_t size, uintptr_t idx));
+DO_API(Il2CppClass*, il2cpp_array_class_get, (Il2CppClass* element_class, uint32_t rank));
+DO_API(uint32_t, il2cpp_array_length, (Il2CppArray* array));
 
 // assembly
 DO_API(const Il2CppImage*, il2cpp_assembly_get_image, (const Il2CppAssembly * assembly));

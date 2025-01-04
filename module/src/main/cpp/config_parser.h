@@ -1,9 +1,10 @@
 #ifndef CONFIG_PARSER_H
 #define CONFIG_PARSER_H
 
+#include <cstdio>
+#include <string>
 #include <stdint.h>
-#include <stdlib.h>
-#include "il2cpp-api.h"
+#include "il2cpp-class.h"
 
 // 文件头结构
 struct ResFileHead {
@@ -14,13 +15,13 @@ struct ResFileHead {
     uint32_t crc32;    // crc 可以忽略
 };
 
-// 配置解析器类
 class ConfigParser {
 public:
     static bool ParseEquipConfig(const char* inputPath, const char* outputPath);
 
 private:
     static bool ReadFileHead(FILE* fp, ResFileHead& head);
+    static bool ReadEquipConfig(FILE* fp, uint32_t count);
     static Il2CppClass* GetEquipConfigClass();
     static Il2CppObject* CreateEquipConfigObject();
     static bool UnpackEquipConfig(Il2CppObject* equipConfig, const uint8_t* data, size_t dataLen);

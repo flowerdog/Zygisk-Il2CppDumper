@@ -12,6 +12,8 @@
 #include <sstream>
 #include <fstream>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <dirent.h>
 #include "xdl.h"
 #include "log.h"
 #include "il2cpp-tabledefs.h"
@@ -27,6 +29,7 @@
 // #undef DO_API
 
 #include "config_parser.h"
+#include "game.h"
 
 static uint64_t il2cpp_base = 0;
 
@@ -434,12 +437,79 @@ void il2cpp_dump(const char *outDir) {
     LOGI("dump done!");
 
     // 在dump完成后解析配置
-    LOGI("开始解析装备配置...");
-    const char* inputPath = "/sdcard/bwxrk/config/raw/EquipConfig";
-    const char* outputPath = "/sdcard/bwxrk/config/raw/EquipConfig.json";
-    if (ConfigParser::ParseEquipConfig(inputPath, outputPath)) {
-        LOGI("装备配置解析完成");
+    LOGIF("开始解析装备配置...");
+    
+    // 检查几个可能的路径
+    std::vector<std::string> possiblePaths = {
+        std::string("/data/data/") + GamePackageName + "/files/config/raw/EquipConfig",
+        std::string("/data/user/0/") + GamePackageName + "/files/config/raw/EquipConfig",
+        "files/config/raw/EquipConfig",
+        std::string("/storage/emulated/0/Android/data/") + GamePackageName + "/files/config/raw/EquipConfig"
+    };
+    
+    std::string inputPath;
+    bool found = false;
+    
+    for (const auto& path : possiblePaths) {
+        LOGIF("检查路径: %s", path.c_str());
+        if (access(path.c_str(), F_OK) == 0) {
+            LOGIF("找到文件: %s", path.c_str());
+            inputPath = path;
+            found = true;
+            break;
+        } else {
+            LOGIF("路径不存在: %s (errno: %d, %s)", path.c_str(), errno, strerror(errno));
+        }
+    }
+    
+    if (!found) {
+        LOGEF("在所有可能的路径中都找不到 EquipConfig 文件");
+        return;
+    }
+    
+    std::string outputPath = std::string("/data/data/") + GamePackageName + "/files/config/json/EquipConfig.json";
+    
+    // 打印当前进程的权限和工作目录
+    char cwd[PATH_MAX];
+    if (getcwd(cwd, sizeof(cwd)) != NULL) {
+        LOGIF("Current working directory: %s", cwd);
+    }
+    
+    LOGIF("Current process: uid=%d, gid=%d, euid=%d, egid=%d", 
+          getuid(), getgid(), geteuid(), getegid());
+    
+    // 尝试列出目录内容
+    std::string dirPath = std::string("/data/data/") + GamePackageName + "/files/config/raw/";
+    DIR* dir = opendir(dirPath.c_str());
+    if (dir) {
+        LOGIF("目录内容 %s:", dirPath.c_str());
+        struct dirent* entry;
+        while ((entry = readdir(dir)) != nullptr) {
+            LOGIF("  %s", entry->d_name);
+        }
+        closedir(dir);
     } else {
-        LOGE("装备配置解析失败");
+        LOGEF("无法打开目录: %s (errno: %d, %s)", dirPath.c_str(), errno, strerror(errno));
+    }
+    
+    if (access(inputPath.c_str(), R_OK) != 0) {
+        LOGEF("无法读取输入文件: %s (errno: %d, %s)", inputPath.c_str(), errno, strerror(errno));
+        return;
+    }
+    
+    // 确保输出目录存在
+    std::string outputDir = std::string("/data/data/") + GamePackageName + "/files/config/json";
+    if (access(outputDir.c_str(), F_OK) != 0) {
+        LOGIF("创建输出目录: %s", outputDir.c_str());
+        if (mkdir(outputDir.c_str(), 0755) != 0) {
+            LOGEF("创建输出目录失败: %s (errno: %d, %s)", outputDir.c_str(), errno, strerror(errno));
+            return;
+        }
+    }
+    
+    if (ConfigParser::ParseEquipConfig(inputPath.c_str(), outputPath.c_str())) {
+        LOGIF("装备配置解析完成");
+    } else {
+        LOGEF("装备配置解析失败");
     }
 }

@@ -3,7 +3,7 @@
 #include <vector>
 #include <fstream>
 #include "il2cpp-api.h"
-
+#include <inttypes.h>
 
 bool ConfigParser::ParseEquipConfig(const char* inputPath, const char* outputPath) {
     LOGIF("开始解析装备配置文件: %s", inputPath);
@@ -27,7 +27,7 @@ bool ConfigParser::ParseEquipConfig(const char* inputPath, const char* outputPat
           head.tag, head.len, head.version, head.resnum, head.crc32);
 
     // 验证文件头tag
-    if (head.tag != 0xEF2D0000) {
+    if (head.tag != 0x00002DEF) {
         LOGEF("无效的文件头tag: 0x%08X", head.tag);
         fclose(fp);
         return false;
@@ -60,13 +60,21 @@ bool ConfigParser::ParseEquipConfig(const char* inputPath, const char* outputPat
             return false;
         }
 
-        // 读取数据
-        uint32_t dataLen;
-        if (fread(&dataLen, sizeof(dataLen), 1, fp) != 1) {
+        // 读取数据长度（需要字节序转换）
+        uint32_t raw_dataLen;
+        if (fread(&raw_dataLen, sizeof(raw_dataLen), 1, fp) != 1) {
             LOGEF("读取数据长度失败 [%u/%u]", i + 1, head.resnum);
             fclose(fp);
             return false;
         }
+        
+        // 转换字节序
+        uint32_t dataLen = ((raw_dataLen & 0xFF000000) >> 24) |
+                          ((raw_dataLen & 0x00FF0000) >> 8) |
+                          ((raw_dataLen & 0x0000FF00) << 8) |
+                          ((raw_dataLen & 0x000000FF) << 24);
+
+        LOGIF("读取数据块 [%u/%u]: 长度=%u", i + 1, head.resnum, dataLen);
 
         buffer.resize(dataLen);
         if (fread(buffer.data(), 1, dataLen, fp) != dataLen) {
@@ -83,7 +91,12 @@ bool ConfigParser::ParseEquipConfig(const char* inputPath, const char* outputPat
         }
 
         // 存入数组
-        il2cpp_array_set_object(configArray, i, equipConfig);
+        void** elementAddr = (void**)il2cpp_array_addr_with_size(configArray, sizeof(void*), i);
+        if (!elementAddr) {
+            LOGEF("获取数组元素地址失败 [%u/%u]", i + 1, head.resnum);
+            return false;
+        }
+        *elementAddr = equipConfig;
         LOGIF("成功解析配置项 [%u/%u]", i + 1, head.resnum);
     }
 
@@ -100,8 +113,56 @@ bool ConfigParser::ParseEquipConfig(const char* inputPath, const char* outputPat
 }
 
 bool ConfigParser::ReadFileHead(FILE* fp, ResFileHead& head) {
-    return fread(&head, sizeof(head), 1, fp) == 1;
+    // 读取文件头结构
+    ResFileHead raw_head;
+    if (fread(&raw_head, sizeof(raw_head), 1, fp) != 1) {
+        LOGEF("读取文件头失败");
+        return false;
+    }
+    
+    // 由于磁盘低位在内存高字节，需要进行字节序转换
+    head.tag = ((raw_head.tag & 0xFF000000) >> 24) |
+               ((raw_head.tag & 0x00FF0000) >> 8) |
+               ((raw_head.tag & 0x0000FF00) << 8) |
+               ((raw_head.tag & 0x000000FF) << 24);
+               
+    head.len = ((raw_head.len & 0xFF000000) >> 24) |
+               ((raw_head.len & 0x00FF0000) >> 8) |
+               ((raw_head.len & 0x0000FF00) << 8) |
+               ((raw_head.len & 0x000000FF) << 24);
+               
+    head.version = ((raw_head.version & 0xFF000000) >> 24) |
+                  ((raw_head.version & 0x00FF0000) >> 8) |
+                  ((raw_head.version & 0x0000FF00) << 8) |
+                  ((raw_head.version & 0x000000FF) << 24);
+                  
+    head.resnum = ((raw_head.resnum & 0xFF000000) >> 24) |
+                 ((raw_head.resnum & 0x00FF0000) >> 8) |
+                 ((raw_head.resnum & 0x0000FF00) << 8) |
+                 ((raw_head.resnum & 0x000000FF) << 24);
+                 
+    head.crc32 = ((raw_head.crc32 & 0xFF000000) >> 24) |
+                ((raw_head.crc32 & 0x00FF0000) >> 8) |
+                ((raw_head.crc32 & 0x0000FF00) << 8) |
+                ((raw_head.crc32 & 0x000000FF) << 24);
+    
+    LOGIF("读取到文件头: tag=0x%08X, len=%u, version=%u, resnum=%u, crc32=0x%08X",
+          head.tag, head.len, head.version, head.resnum, head.crc32);
+          
+    return true;
 }
+
+//print all types of a iamge
+void print_all_types(const Il2CppImage* image) {
+    LOGIF("show type of image: %s", il2cpp_image_get_name(image));
+    
+    size_t type_count = il2cpp_image_get_class_count(image);
+    for (size_t i = 0; i < type_count; i++) {
+        Il2CppClass* type = (Il2CppClass*)(il2cpp_image_get_class(image, i));
+        LOGIF("Type: %s.%s", il2cpp_class_get_namespace(type), il2cpp_class_get_name(type));
+    }
+}
+
 
 Il2CppClass* ConfigParser::GetEquipConfigClass() {
     // 获取GameLogic.dll的Image
@@ -112,7 +173,7 @@ Il2CppClass* ConfigParser::GetEquipConfigClass() {
     const Il2CppImage* gameLogicImage = nullptr;
     for (size_t i = 0; i < size; i++) {
         auto image = il2cpp_assembly_get_image(assemblies[i]);
-        if (strcmp(il2cpp_image_get_name(image), "GameLogic.dll") == 0) {
+        if (strcmp(il2cpp_image_get_name(image), "GameProto.dll") == 0) {
             gameLogicImage = image;
             break;
         }
@@ -123,8 +184,10 @@ Il2CppClass* ConfigParser::GetEquipConfigClass() {
         return nullptr;
     }
 
+    print_all_types(gameLogicImage);
+
     // 获取EquipConfig类
-    auto equipConfigClass = il2cpp_class_from_name(gameLogicImage, "C6Game", "EquipConfig");
+    auto equipConfigClass = il2cpp_class_from_name(gameLogicImage, "ResDef", "EquipConfig");
     if (!equipConfigClass) {
         LOGEF("找不到EquipConfig类");
         return nullptr;
@@ -142,15 +205,48 @@ Il2CppObject* ConfigParser::CreateEquipConfigObject() {
 }
 
 bool ConfigParser::UnpackEquipConfig(Il2CppObject* equipConfig, const uint8_t* data, size_t dataLen) {
+    if (!equipConfig) {
+        LOGEF("equipConfig 对象为空");
+        return false;
+    }
+
+    if (!data) {
+        LOGEF("data 为空");
+        return false;
+    }
+
     // 获取PbReadBuf类
     auto domain = il2cpp_domain_get();
+    if (!domain) {
+        LOGEF("无法获取 domain");
+        return false;
+    }
+
     size_t size;
     auto assemblies = il2cpp_domain_get_assemblies(domain, &size);
+    if (!assemblies) {
+        LOGEF("无法获取 assemblies");
+        return false;
+    }
     
     const Il2CppImage* protoImage = nullptr;
     for (size_t i = 0; i < size; i++) {
         auto image = il2cpp_assembly_get_image(assemblies[i]);
-        if (strcmp(il2cpp_image_get_name(image), "DodProtoBase.dll") == 0) {
+        if (!image) {
+            LOGIF("跳过空的程序集镜像 [%zu/%zu]", i + 1, size);
+            continue;
+        }
+        
+        const char* imageName = il2cpp_image_get_name(image);
+        if (!imageName) {
+            LOGIF("跳过无名程序集 [%zu/%zu]", i + 1, size);
+            continue;
+        }
+        
+        LOGIF("检查程序集: %s", imageName);
+        if (strcmp(imageName, "DodProtoBase.dll") == 0) {
+            LOGIF("找到 DodProtoBase.dll, 开始打印其中的类型");
+            print_all_types(image);
             protoImage = image;
             break;
         }
@@ -161,18 +257,101 @@ bool ConfigParser::UnpackEquipConfig(Il2CppObject* equipConfig, const uint8_t* d
         return false;
     }
 
-    // 创建PbReadBuf对象
-    auto pbReadBufClass = il2cpp_class_from_name(protoImage, "ProtoBase", "PbReadBuf");
-    if (!pbReadBufClass) {
-        LOGEF("找不到PbReadBuf类");
+    LOGIF("开始查找 PbReadBuf 类");
+    
+    // 先检查 protoImage 是否有效
+    if (!protoImage) {
+        LOGEF("protoImage 为空");
         return false;
+    }
+    
+    // 检查命名空间和类名
+    const char* namespaceName = "ProtoBase";
+    const char* className = "PbReadBuf";
+    
+    LOGIF("尝试在命名空间 '%s' 中查找类 '%s'", namespaceName, className);
+    
+    // 先列出所有类，看看有什么
+    size_t count = il2cpp_image_get_class_count(protoImage);
+    LOGIF("DLL中共有 %zu 个类", count);
+    
+    bool foundNamespace = false;
+    for (size_t i = 0; i < count; i++) {
+        Il2CppClass* klass = (Il2CppClass*)(il2cpp_image_get_class(protoImage, i));
+        if (!klass) {
+            LOGIF("  [%zu/%zu] 类为空", i + 1, count);
+            continue;
+        }
+        
+        const char* ns = il2cpp_class_get_namespace(klass);
+        const char* name = il2cpp_class_get_name(klass);
+        
+        if (!ns || !name) {
+            LOGIF("  [%zu/%zu] 命名空间或类名为空", i + 1, count);
+            continue;
+        }
+        
+        LOGIF("  [%zu/%zu] %s.%s", i + 1, count, ns, name);
+        
+        if (strcmp(ns, namespaceName) == 0) {
+            foundNamespace = true;
+            if (strcmp(name, className) == 0) {
+                LOGIF("找到目标类！");
+                break;
+            }
+        }
+    }
+    
+    if (!foundNamespace) {
+        LOGEF("在DLL中没有找到命名空间 '%s'", namespaceName);
+        return false;
+    }
+    
+    // 现在尝试获取类
+    auto pbReadBufClass = il2cpp_class_from_name(protoImage, namespaceName, className);
+    if (!pbReadBufClass) {
+        LOGEF("无法获取 PbReadBuf 类");
+        return false;
+    }
+    
+    LOGIF("成功获取 PbReadBuf 类");
+    
+    // 检查类的方法
+    void* iter = nullptr;
+    LOGIF("PbReadBuf 类的方法:");
+    while (const MethodInfo* method = il2cpp_class_get_methods(pbReadBufClass, &iter)) {
+        if (!method) continue;
+        const char* methodName = il2cpp_method_get_name(method);
+        if (!methodName) continue;
+        LOGIF("  方法: %s", methodName);
     }
 
-    auto readBuf = il2cpp_object_new(pbReadBufClass);
-    if (!readBuf) {
-        LOGEF("创建PbReadBuf对象失败");
+    LOGIF("准备创建 PbReadBuf 对象");
+    
+    // 检查类是否有默认构造函数
+    auto ctor = il2cpp_class_get_method_from_name(pbReadBufClass, ".ctor", 0);
+    if (!ctor) {
+        LOGEF("找不到 PbReadBuf 的默认构造函数");
         return false;
     }
+    
+    LOGIF("找到默认构造函数，开始创建对象");
+    auto readBuf = il2cpp_object_new(pbReadBufClass);
+    if (!readBuf) {
+        LOGEF("创建 PbReadBuf 对象失败");
+        return false;
+    }
+    
+    LOGIF("成功创建对象，调用构造函数");
+    // 调用构造函数
+    Il2CppException* exc = nullptr;
+    il2cpp_runtime_invoke(ctor, readBuf, nullptr, &exc);
+    if (exc) {
+        LOGEF("调用构造函数失败");
+        return false;
+    }
+    
+    LOGIF("构造函数调用成功，准备调用 set 方法");
 
     // 调用set方法设置数据
     auto setMethod = il2cpp_class_get_method_from_name(pbReadBufClass, "set", 2);
@@ -181,41 +360,127 @@ bool ConfigParser::UnpackEquipConfig(Il2CppObject* equipConfig, const uint8_t* d
         return false;
     }
 
-    // 创建一个新的字节数组来存储数据
-    auto byteArrayClass = il2cpp_array_class_get(il2cpp_class_from_name(il2cpp_get_corlib(), "System", "Byte"), 1);
-    auto byteArray = il2cpp_array_new(byteArrayClass, dataLen);
-    for (size_t i = 0; i < dataLen; i++) {
-        il2cpp_array_set_byte(byteArray, i, data[i]);
+    LOGIF("找到 set 方法");
+    
+    // 获取参数信息
+    uint32_t paramCount = il2cpp_method_get_param_count(setMethod);
+    LOGIF("参数个数: %u", paramCount);
+    
+    for (uint32_t i = 0; i < paramCount; i++) {
+        const Il2CppType* paramType = il2cpp_method_get_param(setMethod, i);
+        const char* typeName = il2cpp_type_get_name(paramType);
+        LOGIF("参数 %u: %s", i, typeName ? typeName : "unknown");
     }
 
+    LOGIF("准备创建字节数组");
+    // 创建一个新的字节数组来存储数据
+    auto byteArrayClass = il2cpp_array_class_get(il2cpp_class_from_name(il2cpp_get_corlib(), "System", "Byte"), 1);
+    if (!byteArrayClass) {
+        LOGEF("无法获取 Byte[] 类");
+        return false;
+    }
+
+    LOGIF("创建字节数组，长度: %zu", dataLen);
+    auto byteArray = il2cpp_array_new(byteArrayClass, dataLen);
+    if (!byteArray) {
+        LOGEF("创建字节数组失败");
+        return false;
+    }
+
+    LOGIF("复制数据到字节数组，数据长度: %zu", dataLen);
+    if (dataLen > 0) {
+        LOGIF("检查数据指针: %p", (void*)data);
+        LOGIF("检查字节数组: %p", (void*)byteArray);
+        
+        // 获取数组的实际长度进行验证
+        int32_t arrayLen = il2cpp_array_length(byteArray);
+        LOGIF("字节数组长度: %d", arrayLen);
+        
+        if (arrayLen != dataLen) {
+            LOGEF("数组长度不匹配: 预期 %zu, 实际 %d", dataLen, arrayLen);
+            return false;
+        }
+
+        LOGIF("数组长度匹配: %d", arrayLen);   
+        
+        // 直接使用数组的数据部分
+        uint8_t* arrayData = (uint8_t*)((char*)byteArray + kIl2CppSizeOfArray);
+        if (!arrayData) {
+            LOGEF("无法获取数组数据指针");
+            return false;
+        }
+        
+        LOGIF("数组数据指针: %p", (void*)arrayData);
+        
+        // 使用 memcpy 复制数据
+        memcpy(arrayData, data, dataLen);
+        
+        // 验证前几个字节
+        LOGIF("验证复制结果:");
+        for (size_t i = 0; i < std::min(dataLen, (size_t)10); i++) {
+            LOGIF("  位置 %zu: 原始=%u, 复制=%u", i, data[i], arrayData[i]);
+        }
+    }
+    
+    LOGIF("数据复制完成");
+
     // 准备参数
+    int32_t len = static_cast<int32_t>(dataLen);
     void* params[] = {
         byteArray,
-        &dataLen
+        &len
     };
 
+    LOGIF("调用 set 方法，参数: byteArray=%p, len=%d", byteArray, len);
     // 调用set方法
-    Il2CppException* exc = nullptr;
+    exc = nullptr;
     il2cpp_runtime_invoke(setMethod, readBuf, params, &exc);
     if (exc) {
         LOGEF("调用PbReadBuf.set方法失败");
         return false;
     }
 
+    LOGIF("set 方法调用成功");
+    
     // 调用Unpack方法解析数据
-    auto unpackMethod = il2cpp_class_get_method_from_name(il2cpp_object_get_class(equipConfig), "Unpack", 1);
+    auto equipConfigClass = il2cpp_object_get_class(equipConfig);
+    if (!equipConfigClass) {
+        LOGEF("无法获取 equipConfig 的类信息");
+        return false;
+    }
+
+    LOGIF("获取到 equipConfig 类: %s.%s", 
+          il2cpp_class_get_namespace(equipConfigClass),
+          il2cpp_class_get_name(equipConfigClass));
+
+    auto unpackMethod = il2cpp_class_get_method_from_name(equipConfigClass, "Unpack", 1);
     if (!unpackMethod) {
         LOGEF("找不到EquipConfig.Unpack方法");
         return false;
     }
 
+    LOGIF("找到 Unpack 方法");
+    paramCount = il2cpp_method_get_param_count(unpackMethod);
+    LOGIF("参数个数: %u", paramCount);
+    
+    for (uint32_t i = 0; i < paramCount; i++) {
+        const Il2CppType* paramType = il2cpp_method_get_param(unpackMethod, i);
+        const char* typeName = il2cpp_type_get_name(paramType);
+        LOGIF("参数 %u: %s", i, typeName ? typeName : "unknown");
+    }
+
+    LOGIF("准备调用 Unpack 方法，参数: readBuf=%p", readBuf);
     void* unpackParams[] = { readBuf };
+    exc = nullptr;
     il2cpp_runtime_invoke(unpackMethod, equipConfig, unpackParams, &exc);
     if (exc) {
-        LOGEF("调用EquipConfig.Unpack方法失败");
+        auto excClass = il2cpp_object_get_class((Il2CppObject*)exc);
+        const char* excName = excClass ? il2cpp_class_get_name(excClass) : "Unknown";
+        LOGEF("调用EquipConfig.Unpack方法失败: %s", excName);
         return false;
     }
 
+    LOGIF("Unpack 方法调用成功");
     return true;
 }
 
@@ -265,9 +530,17 @@ bool ConfigParser::SaveAsJson(const char* outputPath, Il2CppArray* configArray) 
     // 遍历数组并序列化每个对象
     int32_t length = il2cpp_array_length(configArray);
     for (int32_t i = 0; i < length; i++) {
-        Il2CppObject* item = il2cpp_array_get_object(configArray, i);
+        // 获取数组元素地址
+        void** elementAddr = (void**)il2cpp_array_addr_with_size(configArray, sizeof(void*), i);
+        if (!elementAddr) {
+            LOGEF("获取数组元素地址失败 [%d/%d]", i + 1, length);
+            outFile.close();
+            return false;
+        }
+        
+        Il2CppObject* item = (Il2CppObject*)*elementAddr;
         if (!item) {
-            LOGEF("获取数组项失败 [%d/%d]", i + 1, length);
+            LOGEF("数组元素为空 [%d/%d]", i + 1, length);
             outFile.close();
             return false;
         }
@@ -277,23 +550,47 @@ bool ConfigParser::SaveAsJson(const char* outputPath, Il2CppArray* configArray) 
         Il2CppException* exc = nullptr;
         auto jsonStr = (Il2CppString*)il2cpp_runtime_invoke(toJsonMethod, nullptr, params, &exc);
         if (exc) {
-            LOGEF("序列化对象失败 [%d/%d]", i + 1, length);
+            auto excClass = il2cpp_object_get_class((Il2CppObject*)exc);
+            const char* excName = excClass ? il2cpp_class_get_name(excClass) : "Unknown";
+            LOGEF("序列化对象失败 [%d/%d]: %s", i + 1, length, excName);
             outFile.close();
             return false;
         }
 
-        // 写入JSON
-        outFile << "  " << il2cpp_string_chars(jsonStr);
-        if (i < length - 1) {
-            outFile << ",";
+        // 将 UTF-16 转换为 UTF-8
+        const Il2CppChar* utf16Str = il2cpp_string_chars(jsonStr);
+        int utf16Len = il2cpp_string_length(jsonStr);
+        std::string utf8Str;
+        
+        for (int j = 0; j < utf16Len; j++) {
+            Il2CppChar ch = utf16Str[j];
+            if (ch <= 0x7F) {
+                // ASCII 字符
+                utf8Str += static_cast<char>(ch);
+            } else if (ch <= 0x7FF) {
+                // 2 字节 UTF-8
+                utf8Str += static_cast<char>(0xC0 | (ch >> 6));
+                utf8Str += static_cast<char>(0x80 | (ch & 0x3F));
+            } else {
+                // 3 字节 UTF-8
+                utf8Str += static_cast<char>(0xE0 | (ch >> 12));
+                utf8Str += static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
+                utf8Str += static_cast<char>(0x80 | (ch & 0x3F));
+            }
         }
-        outFile << "\n";
+
+        // 写入 JSON
+        outFile << utf8Str;
+        if (i < length - 1) {
+            outFile << ",\n";
+        } else {
+            outFile << "\n";
+        }
     }
 
     // 写入JSON数组结束
     outFile << "]\n";
     outFile.close();
 
-    LOGIF("成功保存JSON文件: %s", outputPath);
     return true;
 } 

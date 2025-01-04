@@ -1,4 +1,5 @@
 #include "log.h"
+#include "game.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <time.h>
@@ -35,11 +36,11 @@ void ensure_directory_exists(const char* path) {
 }
 
 void log_to_file(const char* level, const char* fmt, ...) {
-    ensure_directory_exists(LOG_FILE_PATH);
+    ensure_directory_exists(LOG_FILE_PATH.c_str());
     
-    FILE* fp = fopen(LOG_FILE_PATH, "a");
+    FILE* fp = fopen(LOG_FILE_PATH.c_str(), "a");
     if (!fp) {
-        LOGE("Failed to open log file: %s, error: %s", LOG_FILE_PATH, strerror(errno));
+        LOGE("Failed to open log file: %s, error: %s", LOG_FILE_PATH.c_str(), strerror(errno));
         return;
     }
 
