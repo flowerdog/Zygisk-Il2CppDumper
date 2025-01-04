@@ -5,6 +5,92 @@
 #include "il2cpp-api.h"
 #include <inttypes.h>
 
+// 添加通用类型查找函数
+Il2CppClass* ConfigParser::FindClass(const char* assemblyName, const char* namespaze, const char* className) {
+    auto domain = il2cpp_domain_get();
+    size_t size;
+    auto assemblies = il2cpp_domain_get_assemblies(domain, &size);
+    Il2CppClass* foundClass = nullptr;
+    int foundCount = 0;
+    
+    // 如果指定了程序集名称，只在指定程序集中查找
+    if (assemblyName) {
+        LOGIF("在程序集 %s 中查找类型 %s.%s", assemblyName, namespaze ? namespaze : "<any>", className);
+        for (size_t i = 0; i < size; i++) {
+            auto image = il2cpp_assembly_get_image(assemblies[i]);
+            const char* currentAssemblyName = il2cpp_image_get_name(image);
+            
+            if (strcmp(currentAssemblyName, assemblyName) == 0) {
+                if (namespaze) {
+                    auto result = il2cpp_class_from_name(image, namespaze, className);
+                    if (result) {
+                        LOGIF("在程序集 %s 中找到类型 %s.%s", assemblyName, namespaze, className);
+                        return result;
+                    }
+                } else {
+                    // 遍历所有类型
+                    size_t classCount = il2cpp_image_get_class_count(image);
+                    for (size_t j = 0; j < classCount; j++) {
+                        Il2CppClass* klass = (Il2CppClass*)il2cpp_image_get_class(image, j);
+                        if (strcmp(il2cpp_class_get_name(klass), className) == 0) {
+                            foundClass = klass;
+                            foundCount++;
+                            LOGIF("在程序集 %s 命名空间 %s 中找到类型 %s", 
+                                assemblyName, 
+                                il2cpp_class_get_namespace(klass), 
+                                className);
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        // 遍历所有程序集
+        LOGIF("在所有程序集中查找类型 %s", className);
+        for (size_t i = 0; i < size; i++) {
+            auto image = il2cpp_assembly_get_image(assemblies[i]);
+            const char* currentAssemblyName = il2cpp_image_get_name(image);
+            
+            if (namespaze) {
+                auto result = il2cpp_class_from_name(image, namespaze, className);
+                if (result) {
+                    foundClass = result;
+                    foundCount++;
+                    LOGIF("在程序集 %s 命名空间 %s 中找到类型 %s", 
+                        currentAssemblyName, 
+                        namespaze, 
+                        className);
+                }
+            } else {
+                // 遍历所有类型
+                size_t classCount = il2cpp_image_get_class_count(image);
+                for (size_t j = 0; j < classCount; j++) {
+                    Il2CppClass* klass = (Il2CppClass*)il2cpp_image_get_class(image, j);
+                    if (strcmp(il2cpp_class_get_name(klass), className) == 0) {
+                        foundClass = klass;
+                        foundCount++;
+                        LOGIF("在程序集 %s 命名空间 %s 中找到类型 %s", 
+                            currentAssemblyName, 
+                            il2cpp_class_get_namespace(klass), 
+                            className);
+                    }
+                }
+            }
+        }
+    }
+
+    if (foundCount > 1) {
+        LOGWF("警告：找到多个同名类型 %s，总共 %d 个", className, foundCount);
+    }
+
+    if (foundClass) {
+        return foundClass;
+    }
+
+    LOGEF("未找到类型 %s", className);
+    return nullptr;
+}
+
 bool ConfigParser::ParseEquipConfig(const char* inputPath, const char* outputPath) {
     LOGIF("开始解析装备配置文件: %s", inputPath);
     
@@ -30,6 +116,8 @@ bool ConfigParser::ParseEquipConfig(const char* inputPath, const char* outputPat
         return false;
     }
 
+    LOGIF("文件头tag验证成功");
+
     // 获取剩余数据大小
     size_t dataSize = head.len - 20;  // 文件头大小为20字节
     std::vector<uint8_t> buffer(dataSize);
@@ -40,19 +128,16 @@ bool ConfigParser::ParseEquipConfig(const char* inputPath, const char* outputPat
         return false;
     }
     
+    LOGIF("读取文件数据成功");
     fclose(fp);
 
     // 创建并初始化 PbReadBuf
-    auto pbReadBufClass = il2cpp_class_from_name(
-        il2cpp_assembly_get_image(il2cpp_domain_get_assemblies(il2cpp_domain_get(), nullptr)[0]), 
-        "ProtoBase", 
-        "PbReadBuf"
-    );
-    
+    auto pbReadBufClass = FindClass("DodProtoBase.dll", "ProtoBase", "PbReadBuf");
     if (!pbReadBufClass) {
         LOGEF("无法获取 PbReadBuf 类");
         return false;
     }
+    LOGIF("获取 PbReadBuf 类成功");
 
     auto readBuf = il2cpp_object_new(pbReadBufClass);
     if (!readBuf) {
@@ -60,12 +145,15 @@ bool ConfigParser::ParseEquipConfig(const char* inputPath, const char* outputPat
         return false;
     }
 
+    LOGIF("创建 PbReadBuf 对象成功");
     // 调用构造函数
     auto ctor = il2cpp_class_get_method_from_name(pbReadBufClass, ".ctor", 0);
     if (!ctor) {
         LOGEF("找不到 PbReadBuf 的构造函数");
         return false;
     }
+
+    LOGIF("获取 PbReadBuf 的构造函数成功");
 
     Il2CppException* exc = nullptr;
     il2cpp_runtime_invoke(ctor, readBuf, nullptr, &exc);
@@ -74,11 +162,14 @@ bool ConfigParser::ParseEquipConfig(const char* inputPath, const char* outputPat
         return false;
     }
 
+    LOGIF("调用 PbReadBuf 构造函数成功");
+
     // 创建字节数组并设置数据
     auto byteArrayClass = il2cpp_array_class_get(
         il2cpp_class_from_name(il2cpp_get_corlib(), "System", "Byte"), 
         1
     );
+    LOGIF("获取 Byte 数组类成功");
     
     auto byteArray = il2cpp_array_new(byteArrayClass, dataSize);
     if (!byteArray) {
@@ -86,9 +177,13 @@ bool ConfigParser::ParseEquipConfig(const char* inputPath, const char* outputPat
         return false;
     }
 
+    LOGIF("创建字节数组成功");
+
     // 复制数据到字节数组
     uint8_t* arrayData = (uint8_t*)((char*)byteArray + kIl2CppSizeOfArray);
     memcpy(arrayData, buffer.data(), dataSize);
+
+    LOGIF("复制数据到字节数组成功");
 
     // 调用 set 方法设置数据
     auto setMethod = il2cpp_class_get_method_from_name(pbReadBufClass, "set", 2);
@@ -96,6 +191,8 @@ bool ConfigParser::ParseEquipConfig(const char* inputPath, const char* outputPat
         LOGEF("找不到 PbReadBuf.set 方法");
         return false;
     }
+
+    LOGIF("获取 PbReadBuf.set 方法成功");
 
     int32_t len = static_cast<int32_t>(dataSize);
     void* setParams[] = { byteArray, &len };
@@ -106,6 +203,8 @@ bool ConfigParser::ParseEquipConfig(const char* inputPath, const char* outputPat
         return false;
     }
 
+    LOGIF("调用 PbReadBuf.set 方法成功");
+
     // 获取 EquipConfig 类并创建结果数组
     auto equipConfigClass = GetEquipConfigClass();
     if (!equipConfigClass) {
@@ -113,32 +212,37 @@ bool ConfigParser::ParseEquipConfig(const char* inputPath, const char* outputPat
         return false;
     }
 
+    LOGIF("获取 EquipConfig 类成功");
+
     auto configArray = il2cpp_array_new(equipConfigClass, head.resnum);
     if (!configArray) {
         LOGEF("创建配置数组失败");
         return false;
     }
+    LOGIF("创建配置数组成功");
 
     // 循环解析每个配置项
     for (uint32_t i = 0; i < head.resnum; i++) {
+        LOGIF("开始解析配置项 [%u/%u]", i + 1, head.resnum);
         // 创建 EquipConfig 对象
         auto equipConfig = il2cpp_object_new(equipConfigClass);
         if (!equipConfig) {
             LOGEF("创建 EquipConfig 对象失败 [%u/%u]", i + 1, head.resnum);
             return false;
         }
-
+        LOGIF("创建 EquipConfig 对象成功");
         // 调用 unpack 方法
         auto unpackMethod = il2cpp_class_get_method_from_name(equipConfigClass, "unpack", 3);
         if (!unpackMethod) {
             LOGEF("找不到 EquipConfig.unpack 方法");
             return false;
         }
+        LOGIF("获取 EquipConfig.unpack 方法成功");
 
         uint32_t cutVer = 0;
         void* stack = nullptr;
         void* unpackParams[] = { readBuf, &cutVer, stack };
-        
+        LOGIF("准备调用 EquipConfig.unpack 方法");
         exc = nullptr;
         il2cpp_runtime_invoke(unpackMethod, equipConfig, unpackParams, &exc);
         if (exc) {
@@ -147,7 +251,7 @@ bool ConfigParser::ParseEquipConfig(const char* inputPath, const char* outputPat
             LOGEF("调用 EquipConfig.unpack 方法失败 [%u/%u]: %s", i + 1, head.resnum, excName);
             return false;
         }
-
+        LOGIF("调用 EquipConfig.unpack 方法成功");
         // 存入数组
         void** elementAddr = (void**)((char*)configArray + kIl2CppSizeOfArray + i * sizeof(void*));
         *elementAddr = equipConfig;
@@ -217,35 +321,15 @@ void print_all_types(const Il2CppImage* image) {
 
 
 Il2CppClass* ConfigParser::GetEquipConfigClass() {
-    // 获取GameLogic.dll的Image
-    auto domain = il2cpp_domain_get();
-    size_t size;
-    auto assemblies = il2cpp_domain_get_assemblies(domain, &size);
+    // 先尝试精确查找
+    auto result = FindClass("GameProto.dll", "ResDef", "EquipConfig");
+    if (result) {
+        return result;
+    }
     
-    const Il2CppImage* gameLogicImage = nullptr;
-    for (size_t i = 0; i < size; i++) {
-        auto image = il2cpp_assembly_get_image(assemblies[i]);
-        if (strcmp(il2cpp_image_get_name(image), "GameProto.dll") == 0) {
-            gameLogicImage = image;
-            break;
-        }
-    }
-
-    if (!gameLogicImage) {
-        LOGEF("找不到GameLogic.dll");
-        return nullptr;
-    }
-
-    print_all_types(gameLogicImage);
-
-    // 获取EquipConfig类
-    auto equipConfigClass = il2cpp_class_from_name(gameLogicImage, "ResDef", "EquipConfig");
-    if (!equipConfigClass) {
-        LOGEF("找不到EquipConfig类");
-        return nullptr;
-    }
-
-    return equipConfigClass;
+    // 如果精确查找失败，尝试在所有程序集中查找
+    LOGIF("精确查找失败，尝试在所有程序集中查找 EquipConfig 类");
+    return FindClass(nullptr, nullptr, "EquipConfig");
 }
 
 Il2CppObject* ConfigParser::CreateEquipConfigObject() {
@@ -257,35 +341,17 @@ Il2CppObject* ConfigParser::CreateEquipConfigObject() {
 }
 
 bool ConfigParser::SaveAsJson(const char* outputPath, Il2CppArray* configArray) {
-    // 获取UnityEngine.JsonUtility类
-    auto domain = il2cpp_domain_get();
-    size_t size;
-    auto assemblies = il2cpp_domain_get_assemblies(domain, &size);
-    
-    const Il2CppImage* unityEngineImage = nullptr;
-    for (size_t i = 0; i < size; i++) {
-        auto image = il2cpp_assembly_get_image(assemblies[i]);
-        if (strcmp(il2cpp_image_get_name(image), "UnityEngine.CoreModule.dll") == 0) {
-            unityEngineImage = image;
-            break;
-        }
-    }
-
-    if (!unityEngineImage) {
-        LOGEF("找不到UnityEngine.CoreModule.dll");
-        return false;
-    }
-
-    auto jsonUtilityClass = il2cpp_class_from_name(unityEngineImage, "UnityEngine", "JsonUtility");
+    // 获取 JsonUtility 类
+    auto jsonUtilityClass = FindClass("UnityEngine.CoreModule.dll", "UnityEngine", "JsonUtility");
     if (!jsonUtilityClass) {
-        LOGEF("找不到JsonUtility类");
+        LOGEF("找不到 JsonUtility 类");
         return false;
     }
 
-    // 获取ToJson方法
+    // 获取 ToJson 方法
     auto toJsonMethod = il2cpp_class_get_method_from_name(jsonUtilityClass, "ToJson", 1);
     if (!toJsonMethod) {
-        LOGEF("找不到ToJson方法");
+        LOGEF("找不到 ToJson 方法");
         return false;
     }
 
@@ -296,20 +362,14 @@ bool ConfigParser::SaveAsJson(const char* outputPath, Il2CppArray* configArray) 
         return false;
     }
 
-    // 写入JSON数组开始
+    // 写入 JSON 数组开始
     outFile << "[\n";
 
     // 遍历数组并序列化每个对象
     int32_t length = il2cpp_array_length(configArray);
     for (int32_t i = 0; i < length; i++) {
-        // 获取数组元素地址
-        void** elementAddr = (void**)il2cpp_array_addr_with_size(configArray, sizeof(void*), i);
-        if (!elementAddr) {
-            LOGEF("获取数组元素地址失败 [%d/%d]", i + 1, length);
-            outFile.close();
-            return false;
-        }
-        
+        // 获取数组元素
+        void** elementAddr = (void**)((char*)configArray + kIl2CppSizeOfArray + i * sizeof(void*));
         Il2CppObject* item = (Il2CppObject*)*elementAddr;
         if (!item) {
             LOGEF("数组元素为空 [%d/%d]", i + 1, length);
@@ -317,7 +377,7 @@ bool ConfigParser::SaveAsJson(const char* outputPath, Il2CppArray* configArray) 
             return false;
         }
 
-        // 调用ToJson
+        // 调用 ToJson
         void* params[] = { item };
         Il2CppException* exc = nullptr;
         auto jsonStr = (Il2CppString*)il2cpp_runtime_invoke(toJsonMethod, nullptr, params, &exc);
@@ -360,7 +420,7 @@ bool ConfigParser::SaveAsJson(const char* outputPath, Il2CppArray* configArray) 
         }
     }
 
-    // 写入JSON数组结束
+    // 写入 JSON 数组结束
     outFile << "]\n";
     outFile.close();
 

@@ -26,6 +26,7 @@ private:
     static Il2CppObject* CreateEquipConfigObject();
     static bool UnpackEquipConfig(Il2CppObject* equipConfig, const uint8_t* data, size_t dataLen);
     static bool SaveAsJson(const char* outputPath, Il2CppArray* configArray);
+    static Il2CppClass* FindClass(const char* assemblyName, const char* namespaze, const char* className);
 };
 
 #endif // CONFIG_PARSER_H 
