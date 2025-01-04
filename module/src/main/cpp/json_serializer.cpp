@@ -24,7 +24,7 @@ std::string Utf16ToUtf8(const Il2CppChar* utf16Str, int utf16Len) {
 }
 
 void JsonSerializer::SerializeObject(std::ofstream& outFile, Il2CppObject* obj, int indent) {
-    LOGIF("开始序列化对象");
+    // LOGIF("开始序列化对象");
     
     if (!obj) {
         LOGEF("对象为空，写入 null");
@@ -34,16 +34,16 @@ void JsonSerializer::SerializeObject(std::ofstream& outFile, Il2CppObject* obj, 
 
     auto klass = il2cpp_object_get_class(obj);
     const char* className = il2cpp_class_get_name(klass);
-    LOGIF("序列化类型: %s", className);
+    // LOGIF("序列化类型: %s", className);
 
     if (strcmp(className, "String") == 0) {
-        LOGIF("序列化字符串对象");
+        // LOGIF("序列化字符串对象");
         Il2CppString* strObj = (Il2CppString*)obj;
         const Il2CppChar* utf16Str = il2cpp_string_chars(strObj);
         int utf16Len = il2cpp_string_length(strObj);
         std::string utf8Str = Utf16ToUtf8(utf16Str, utf16Len);
         outFile << "\"" << utf8Str << "\"";
-        LOGIF("字符串序列化完成，长度: %d", utf16Len);
+        // LOGIF("字符串序列化完成，长度: %d", utf16Len);
         return;
     }
 
@@ -53,10 +53,10 @@ void JsonSerializer::SerializeObject(std::ofstream& outFile, Il2CppObject* obj, 
     FieldInfo* field;
     bool firstField = true;
 
-    LOGIF("开始序列化字段");
+    // LOGIF("开始序列化字段");
     while ((field = il2cpp_class_get_fields(klass, &iter)) != nullptr) {
         if (il2cpp_field_get_flags(field) & FIELD_ATTRIBUTE_STATIC) {
-            LOGIF("跳过静态字段: %s", il2cpp_field_get_name(field));
+            // LOGIF("跳过静态字段: %s", il2cpp_field_get_name(field));
             continue;
         }
 
@@ -66,53 +66,53 @@ void JsonSerializer::SerializeObject(std::ofstream& outFile, Il2CppObject* obj, 
         firstField = false;
 
         const char* fieldName = il2cpp_field_get_name(field);
-        LOGIF("序列化字段: %s", fieldName);
+        // LOGIF("序列化字段: %s", fieldName);
         outFile << indentStr << "\"" << fieldName << "\": ";
 
         JsonSerializer::SerializeField(outFile, obj, field, indent + 2);
     }
 
     outFile << "\n" << std::string(indent, ' ') << "}";
-    LOGIF("对象序列化完成");
+    // LOGIF("对象序列化完成");
 }
 
 void JsonSerializer::SerializeField(std::ofstream& outFile, Il2CppObject* obj, FieldInfo* field, int indent) {
-    LOGIF("开始序列化字段");
+    // LOGIF("开始序列化字段");
     
     const Il2CppType* fieldType = il2cpp_field_get_type(field);
     const char* typeName = il2cpp_type_get_name(fieldType);
     auto fieldClass = il2cpp_class_from_type(fieldType);
     
-    LOGIF("字段类型: %s", typeName);
+    // LOGIF("字段类型: %s", typeName);
 
     if (fieldType->type == IL2CPP_TYPE_SZARRAY || fieldType->type == IL2CPP_TYPE_ARRAY) {
-        LOGIF("序列化数组字段");
+        // LOGIF("序列化数组字段");
         Il2CppArray* value = nullptr;
         il2cpp_field_get_value(obj, field, &value);
         JsonSerializer::SerializeArray(outFile, value, indent);
-        LOGIF("数组字段序列化完成");
+        // LOGIF("数组字段序列化完成");
     } else if (il2cpp_class_is_enum(fieldClass) || il2cpp_class_is_valuetype(fieldClass) || strcmp(typeName, "System.String") == 0) {
-        LOGIF("序列化值类型/枚举/字符串字段");
+        // LOGIF("序列化值类型/枚举/字符串字段");
         void* fieldAddr = (char*)obj + il2cpp_field_get_offset(field);
         JsonSerializer::SerializeFieldValue(outFile, field, fieldAddr, indent);
-        LOGIF("值类型字段序列化完成");
+        // LOGIF("值类型字段序列化完成");
     } else {
-        LOGIF("序列化对象字段");
+        // LOGIF("序列化对象字段");
         Il2CppObject* value = nullptr;
         il2cpp_field_get_value(obj, field, &value);
         JsonSerializer::SerializeObject(outFile, value, indent);
-        LOGIF("对象字段序列化完成");
+        // LOGIF("对象字段序列化完成");
     }
     
-    LOGIF("字段序列化完成");
+    // LOGIF("字段序列化完成");
 }
 
 void JsonSerializer::SerializeFieldValue(std::ofstream& outFile, FieldInfo* field, void* fieldAddr, int indent) {
-    LOGIF("开始序列化字段值");
+    // LOGIF("开始序列化字段值");
     const Il2CppType* fieldType = il2cpp_field_get_type(field);
     const char* typeName = il2cpp_type_get_name(fieldType);
     auto fieldClass = il2cpp_class_from_type(fieldType);
-    LOGIF("字段类型: %s", typeName);
+    // LOGIF("字段类型: %s", typeName);
 
     if (strcmp(typeName, "System.Int32") == 0 || 
         strcmp(typeName, "System.UInt32") == 0 ||
@@ -122,19 +122,19 @@ void JsonSerializer::SerializeFieldValue(std::ofstream& outFile, FieldInfo* fiel
         strcmp(typeName, "System.UInt16") == 0 ||
         strcmp(typeName, "System.Byte") == 0 ||
         strcmp(typeName, "System.SByte") == 0) {
-        LOGIF("序列化数值类型字段");
+        // LOGIF("序列化数值类型字段");
         uint64_t value = 0;
         memcpy(&value, fieldAddr, il2cpp_class_value_size(fieldClass, nullptr));
         outFile << value;
-        LOGIF("数值: %" PRIu64, value);
+        // LOGIF("数值: %" PRIu64, value);
     } else if (strcmp(typeName, "System.Boolean") == 0) {
-        LOGIF("序列化布尔类型字段");
+        // LOGIF("序列化布尔类型字段");
         bool value = false;
         memcpy(&value, fieldAddr, sizeof(bool));
         outFile << (value ? "true" : "false");
-        LOGIF("布尔值: %s", value ? "true" : "false");
+        // LOGIF("布尔值: %s", value ? "true" : "false");
     } else if (strcmp(typeName, "System.String") == 0) {
-        LOGIF("序列化字符串类型字段");
+        // LOGIF("序列化字符串类型字段");
         Il2CppString* value = *(Il2CppString**)fieldAddr;
         outFile << "\"";
         if (value) {
@@ -142,23 +142,23 @@ void JsonSerializer::SerializeFieldValue(std::ofstream& outFile, FieldInfo* fiel
             int utf16Len = il2cpp_string_length(value);
             std::string utf8Str = Utf16ToUtf8(utf16Str, utf16Len);
             outFile << utf8Str;
-            LOGIF("字符串值: %s", utf8Str.c_str());
+            // LOGIF("字符串值: %s", utf8Str.c_str());
         } else {
-            LOGIF("字符串为空");
+            // LOGIF("字符串为空");
         }
         outFile << "\"";
     } else if (il2cpp_class_is_enum(fieldClass)) {
-        LOGIF("序列化枚举类型字段");
+        // LOGIF("序列化枚举类型字段");
         uint64_t value = 0;
         memcpy(&value, fieldAddr, il2cpp_class_value_size(fieldClass, nullptr));
         outFile << value;
-        LOGIF("枚举值: %" PRIu64, value);
+        // LOGIF("枚举值: %" PRIu64, value);
     }
-    LOGIF("字段值序列化完成");
+    // LOGIF("字段值序列化完成");
 }
 
 void JsonSerializer::SerializeArray(std::ofstream& outFile, Il2CppArray* arr, int indent) {
-    LOGIF("开始序列化数组");
+    // LOGIF("开始序列化数组");
     if (!arr) {
         LOGEF("数组为空，写入 null");
         outFile << "null";
@@ -167,7 +167,7 @@ void JsonSerializer::SerializeArray(std::ofstream& outFile, Il2CppArray* arr, in
 
     auto elementClass = il2cpp_class_get_element_class(il2cpp_object_get_class((Il2CppObject*)arr));
     int32_t length = il2cpp_array_length(arr);
-    LOGIF("数组长度: %d, 元素类型: %s", length, il2cpp_class_get_name(elementClass));
+    // LOGIF("数组长度: %d, 元素类型: %s", length, il2cpp_class_get_name(elementClass));
 
     outFile << "[\n";
     std::string indentStr(indent + 2, ' ');
@@ -182,17 +182,17 @@ void JsonSerializer::SerializeArray(std::ofstream& outFile, Il2CppArray* arr, in
     char* arrayData = ((char*)arr) + kIl2CppSizeOfArray;
 
     for (int32_t i = 0; i < length; i++) {
-        LOGIF("序列化数组元素 [%d/%d]", i + 1, length);
+        // LOGIF("序列化数组元素 [%d/%d]", i + 1, length);
         outFile << indentStr;
         
         // 计算当前元素的地址
         void* elementAddr = arrayData + (i * elementSize);
         
         if (il2cpp_class_is_valuetype(elementClass) || il2cpp_class_is_enum(elementClass)) {
-            LOGIF("元素是值类型或枚举类型");
+            // LOGIF("元素是值类型或枚举类型");
             JsonSerializer::SerializeValueType(outFile, elementClass, elementAddr, indent + 2);
         } else {
-            LOGIF("元素是引用类型");
+            // LOGIF("元素是引用类型");
             Il2CppObject* elementObj = *(Il2CppObject**)elementAddr;
             JsonSerializer::SerializeObject(outFile, elementObj, indent + 2);
         }
@@ -204,19 +204,19 @@ void JsonSerializer::SerializeArray(std::ofstream& outFile, Il2CppArray* arr, in
     }
 
     outFile << std::string(indent, ' ') << "]";
-    LOGIF("数组序列化完成");
+    // LOGIF("数组序列化完成");
 }
 
 void JsonSerializer::SerializeValueType(std::ofstream& outFile, Il2CppClass* klass, void* value, int indent) {
-    LOGIF("开始序列化值类型");
-    LOGIF("类型: %s", il2cpp_class_get_name(klass));
+    // LOGIF("开始序列化值类型");
+    // LOGIF("类型: %s", il2cpp_class_get_name(klass));
 
     if (il2cpp_class_is_enum(klass)) {
-        LOGIF("序列化枚举类型");
+        // LOGIF("序列化枚举类型");
         uint64_t enumValue = 0;
         memcpy(&enumValue, value, il2cpp_class_value_size(klass, nullptr));
         outFile << enumValue;
-        LOGIF("枚举值: %" PRIu64, enumValue);
+        // LOGIF("枚举值: %" PRIu64, enumValue);
         return;
     }
 
@@ -227,10 +227,10 @@ void JsonSerializer::SerializeValueType(std::ofstream& outFile, Il2CppClass* kla
     FieldInfo* field;
     bool firstField = true;
 
-    LOGIF("开始遍历字段");
+    // LOGIF("开始遍历字段");
     while ((field = il2cpp_class_get_fields(klass, &iter)) != nullptr) {
         if (il2cpp_field_get_flags(field) & FIELD_ATTRIBUTE_STATIC) {
-            LOGIF("跳过静态字段");
+            // LOGIF("跳过静态字段");
             continue;
         }
 
@@ -240,7 +240,7 @@ void JsonSerializer::SerializeValueType(std::ofstream& outFile, Il2CppClass* kla
         firstField = false;
 
         const char* fieldName = il2cpp_field_get_name(field);
-        LOGIF("序列化字段: %s", fieldName);
+        // LOGIF("序列化字段: %s", fieldName);
         outFile << indentStr << "\"" << fieldName << "\": ";
 
         size_t offset = il2cpp_field_get_offset(field);
@@ -249,5 +249,5 @@ void JsonSerializer::SerializeValueType(std::ofstream& outFile, Il2CppClass* kla
     }
 
     outFile << "\n" << std::string(indent, ' ') << "}";
-    LOGIF("值类型序列化完成");
+    // LOGIF("值类型序列化完成");
 } 

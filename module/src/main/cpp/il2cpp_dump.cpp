@@ -507,9 +507,9 @@ void il2cpp_dump(const char *outDir) {
         }
     }
     
-    if (ConfigParser::ParseEquipConfig(inputPath.c_str(), outputPath.c_str())) {
-        LOGIF("装备配置解析完成");
+    if (ConfigParser::ParseAllConfigs(dirPath, outputDir)) {
+        LOGIF("配置解析完成!");
     } else {
-        LOGEF("装备配置解析失败");
+        LOGEF("配置解析失败!");
     }
 }

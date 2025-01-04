@@ -5,6 +5,7 @@
 #include <string>
 #include <stdint.h>
 #include <fstream>
+#include <dirent.h>
 #include "il2cpp-class.h"
 
 // 文件头结构
@@ -19,6 +20,8 @@ struct ResFileHead {
 class ConfigParser {
 public:
     static bool ParseEquipConfig(const char* inputPath, const char* outputPath);
+    static bool ParseAllConfigs(const std::string& dirPath, const std::string& outputDir);
+    static bool ParseConfigFile(const std::string& filePath, Il2CppClass* klass, const std::string& outputDir);
 
 private:
     // 基础工具函数
