@@ -27,6 +27,8 @@ private:
     static bool UnpackEquipConfig(Il2CppObject* equipConfig, const uint8_t* data, size_t dataLen);
     static bool SaveAsJson(const char* outputPath, Il2CppArray* configArray);
     static Il2CppClass* FindClass(const char* assemblyName, const char* namespaze, const char* className);
+    static void PrintEquipConfigFields(Il2CppObject* equipConfig, const char* prefix);
+    static std::string Utf16ToUtf8(const Il2CppChar* utf16Str, int utf16Len);
 };
 
 #endif // CONFIG_PARSER_H 

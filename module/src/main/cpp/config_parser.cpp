@@ -196,14 +196,34 @@ bool ConfigParser::ParseEquipConfig(const char* inputPath, const char* outputPat
 
     int32_t len = static_cast<int32_t>(dataSize);
     void* setParams[] = { byteArray, &len };
+    LOGIF("准备调用 set 方法，参数: byteArray=%p, len=%d", byteArray, len);
     exc = nullptr;
     il2cpp_runtime_invoke(setMethod, readBuf, setParams, &exc);
     if (exc) {
-        LOGEF("调用 PbReadBuf.set 方法失败");
+        auto excClass = il2cpp_object_get_class((Il2CppObject*)exc);
+        const char* excName = excClass ? il2cpp_class_get_name(excClass) : "Unknown";
+        LOGEF("调用 PbReadBuf.set 方法失败: %s", excName);
         return false;
     }
 
-    LOGIF("调用 PbReadBuf.set 方法成功");
+    LOGIF("调用 PbReadBuf.set 方法成功，数据大小: %d 字节", len);
+    
+    // 检查 readBuf 的一些属性
+    auto bufferField = il2cpp_class_get_field_from_name(pbReadBufClass, "buffer");
+    auto posField = il2cpp_class_get_field_from_name(pbReadBufClass, "pos");
+    auto lenField = il2cpp_class_get_field_from_name(pbReadBufClass, "len");
+    
+    if (bufferField && posField && lenField) {
+        void* buffer = nullptr;
+        int32_t pos = 0;
+        int32_t bufLen = 0;
+        
+        il2cpp_field_get_value((Il2CppObject*)readBuf, bufferField, &buffer);
+        il2cpp_field_get_value((Il2CppObject*)readBuf, posField, &pos);
+        il2cpp_field_get_value((Il2CppObject*)readBuf, lenField, &bufLen);
+        
+        LOGIF("PbReadBuf 状态: buffer=%p, pos=%d, len=%d", buffer, pos, bufLen);
+    }
 
     // 获取 EquipConfig 类并创建结果数组
     auto equipConfigClass = GetEquipConfigClass();
@@ -213,6 +233,25 @@ bool ConfigParser::ParseEquipConfig(const char* inputPath, const char* outputPat
     }
 
     LOGIF("获取 EquipConfig 类成功");
+    
+    // 打印类的字段信息
+    void* iter = nullptr;
+    FieldInfo* field;
+    LOGIF("EquipConfig 类的字段列表:");
+    while ((field = il2cpp_class_get_fields(equipConfigClass, &iter)) != nullptr) {
+        const char* fieldName = il2cpp_field_get_name(field);
+        const char* fieldType = il2cpp_type_get_name(il2cpp_field_get_type(field));
+        LOGIF("  字段: %s, 类型: %s", fieldName, fieldType);
+    }
+    
+    // 打印类的方法信息
+    iter = nullptr;
+    const MethodInfo* method;
+    LOGIF("EquipConfig 类的方法列表:");
+    while ((method = il2cpp_class_get_methods(equipConfigClass, &iter)) != nullptr) {
+        const char* methodName = il2cpp_method_get_name(method);
+        LOGIF("  方法: %s, 参数个数: %d", methodName, il2cpp_method_get_param_count(method));
+    }
 
     auto configArray = il2cpp_array_new(equipConfigClass, head.resnum);
     if (!configArray) {
@@ -231,6 +270,41 @@ bool ConfigParser::ParseEquipConfig(const char* inputPath, const char* outputPat
             return false;
         }
         LOGIF("创建 EquipConfig 对象成功");
+
+        // 调用构造函数
+        auto ctor = il2cpp_class_get_method_from_name(equipConfigClass, ".ctor", 0);
+        if (!ctor) {
+            LOGEF("找不到 EquipConfig 构造函数");
+            return false;
+        }
+        exc = nullptr;
+        il2cpp_runtime_invoke(ctor, equipConfig, nullptr, &exc);
+        if (exc) {
+            LOGEF("调用 EquipConfig 构造函数失败");
+            return false;
+        }
+
+        // 调用 create 方法初始化对象
+        auto createMethod = il2cpp_class_get_method_from_name(equipConfigClass, "create", 0);
+        if (!createMethod) {
+            LOGEF("找不到 EquipConfig.create 方法");
+            return false;
+        }
+        LOGIF("获取 EquipConfig.create 方法成功");
+
+        exc = nullptr;
+        il2cpp_runtime_invoke(createMethod, equipConfig, nullptr, &exc);
+        if (exc) {
+            auto excClass = il2cpp_object_get_class((Il2CppObject*)exc);
+            const char* excName = excClass ? il2cpp_class_get_name(excClass) : "Unknown";
+            LOGEF("调用 EquipConfig.create 方法失败: %s", excName);
+            return false;
+        }
+        LOGIF("调用 EquipConfig.create 方法成功");
+
+        // 打印 unpack 前的字段值
+        PrintEquipConfigFields(equipConfig, "unpack 前的");
+
         // 调用 unpack 方法
         auto unpackMethod = il2cpp_class_get_method_from_name(equipConfigClass, "unpack", 3);
         if (!unpackMethod) {
@@ -240,18 +314,23 @@ bool ConfigParser::ParseEquipConfig(const char* inputPath, const char* outputPat
         LOGIF("获取 EquipConfig.unpack 方法成功");
 
         uint32_t cutVer = 0;
-        void* stack = nullptr;
-        void* unpackParams[] = { readBuf, &cutVer, stack };
-        LOGIF("准备调用 EquipConfig.unpack 方法");
+        void* unpackParams[] = { readBuf, &cutVer, nullptr };
+        LOGIF("准备调用 EquipConfig.unpack 方法，参数: readBuf=%p, cutVer=%u, stack=%p", readBuf, cutVer, nullptr);
         exc = nullptr;
         il2cpp_runtime_invoke(unpackMethod, equipConfig, unpackParams, &exc);
         if (exc) {
             auto excClass = il2cpp_object_get_class((Il2CppObject*)exc);
             const char* excName = excClass ? il2cpp_class_get_name(excClass) : "Unknown";
             LOGEF("调用 EquipConfig.unpack 方法失败 [%u/%u]: %s", i + 1, head.resnum, excName);
+                    // 打印 unpack 后的字段值
+            PrintEquipConfigFields(equipConfig, "unpack 后的");
             return false;
         }
         LOGIF("调用 EquipConfig.unpack 方法成功");
+
+        // 打印 unpack 后的字段值
+        PrintEquipConfigFields(equipConfig, "unpack 后的");
+
         // 存入数组
         void** elementAddr = (void**)((char*)configArray + kIl2CppSizeOfArray + i * sizeof(void*));
         *elementAddr = equipConfig;
@@ -392,24 +471,7 @@ bool ConfigParser::SaveAsJson(const char* outputPath, Il2CppArray* configArray) 
         // 将 UTF-16 转换为 UTF-8
         const Il2CppChar* utf16Str = il2cpp_string_chars(jsonStr);
         int utf16Len = il2cpp_string_length(jsonStr);
-        std::string utf8Str;
-        
-        for (int j = 0; j < utf16Len; j++) {
-            Il2CppChar ch = utf16Str[j];
-            if (ch <= 0x7F) {
-                // ASCII 字符
-                utf8Str += static_cast<char>(ch);
-            } else if (ch <= 0x7FF) {
-                // 2 字节 UTF-8
-                utf8Str += static_cast<char>(0xC0 | (ch >> 6));
-                utf8Str += static_cast<char>(0x80 | (ch & 0x3F));
-            } else {
-                // 3 字节 UTF-8
-                utf8Str += static_cast<char>(0xE0 | (ch >> 12));
-                utf8Str += static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
-                utf8Str += static_cast<char>(0x80 | (ch & 0x3F));
-            }
-        }
+        std::string utf8Str = Utf16ToUtf8(utf16Str, utf16Len);
 
         // 写入 JSON
         outFile << utf8Str;
@@ -425,4 +487,68 @@ bool ConfigParser::SaveAsJson(const char* outputPath, Il2CppArray* configArray) 
     outFile.close();
 
     return true;
+}
+
+void ConfigParser::PrintEquipConfigFields(Il2CppObject* equipConfig, const char* prefix) {
+    auto equipConfigClass = il2cpp_object_get_class(equipConfig);
+    LOGIF("%s字段值:", prefix);
+    void* iter = nullptr;
+    FieldInfo* field;
+    while ((field = il2cpp_class_get_fields(equipConfigClass, &iter)) != nullptr) {
+        const char* fieldName = il2cpp_field_get_name(field);
+        const Il2CppType* fieldType = il2cpp_field_get_type(field);
+        const char* typeName = il2cpp_type_get_name(fieldType);
+        
+        // 根据类型名称判断
+        if (strcmp(typeName, "System.Int32") == 0 || 
+            strcmp(typeName, "System.UInt32") == 0 ||
+            strcmp(typeName, "System.Int64") == 0 ||
+            strcmp(typeName, "System.UInt64") == 0 ||
+            strcmp(typeName, "System.Int16") == 0 ||
+            strcmp(typeName, "System.UInt16") == 0 ||
+            strcmp(typeName, "System.Byte") == 0 ||
+            strcmp(typeName, "System.SByte") == 0 ||
+            strcmp(typeName, "System.Boolean") == 0) {
+            uint64_t value = 0;
+            il2cpp_field_get_value(equipConfig, field, &value);
+            LOGIF("  字段: %s = %" PRIu64 " (类型: %s)", fieldName, value, typeName);
+        } else if (strcmp(typeName, "System.String") == 0) {
+            Il2CppString* value = nullptr;
+            il2cpp_field_get_value(equipConfig, field, &value);
+            std::string strValue;
+            if (value) {
+                const Il2CppChar* utf16Str = il2cpp_string_chars(value);
+                int utf16Len = il2cpp_string_length(value);
+                strValue = Utf16ToUtf8(utf16Str, utf16Len);
+            } else {
+                strValue = "null";
+            }
+            LOGIF("  字段: %s = %s (类型: %s)", fieldName, strValue.c_str(), typeName);
+        } else {
+            void* value = nullptr;
+            il2cpp_field_get_value(equipConfig, field, &value);
+            LOGIF("  字段: %s = %p (类型: %s)", fieldName, value, typeName);
+        }
+    }
+}
+
+std::string ConfigParser::Utf16ToUtf8(const Il2CppChar* utf16Str, int utf16Len) {
+    std::string utf8Str;
+    for (int i = 0; i < utf16Len; i++) {
+        Il2CppChar ch = utf16Str[i];
+        if (ch <= 0x7F) {
+            // ASCII 字符
+            utf8Str += static_cast<char>(ch);
+        } else if (ch <= 0x7FF) {
+            // 2 字节 UTF-8
+            utf8Str += static_cast<char>(0xC0 | (ch >> 6));
+            utf8Str += static_cast<char>(0x80 | (ch & 0x3F));
+        } else {
+            // 3 字节 UTF-8
+            utf8Str += static_cast<char>(0xE0 | (ch >> 12));
+            utf8Str += static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
+            utf8Str += static_cast<char>(0x80 | (ch & 0x3F));
+        }
+    }
+    return utf8Str;
 } 
