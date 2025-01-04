@@ -700,7 +700,7 @@ bool ConfigParser::ParseConfigFile(const std::string& filePath, Il2CppClass* kla
 
     // 循环解析每个配置项
     for (uint32_t i = 0; i < head.resnum; i++) {
-        LOGIF("开始解析配置项 [%u/%u]", i + 1, head.resnum);
+        // LOGIF("开始解析配置项 [%u/%u]", i + 1, head.resnum);
         // 创建配置对象
         auto configObject = il2cpp_object_new(klass);
         if (!configObject) {

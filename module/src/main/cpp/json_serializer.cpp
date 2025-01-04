@@ -108,53 +108,73 @@ void JsonSerializer::SerializeField(std::ofstream& outFile, Il2CppObject* obj, F
 }
 
 void JsonSerializer::SerializeFieldValue(std::ofstream& outFile, FieldInfo* field, void* fieldAddr, int indent) {
-    // LOGIF("开始序列化字段值");
     const Il2CppType* fieldType = il2cpp_field_get_type(field);
     const char* typeName = il2cpp_type_get_name(fieldType);
     auto fieldClass = il2cpp_class_from_type(fieldType);
-    // LOGIF("字段类型: %s", typeName);
 
-    if (strcmp(typeName, "System.Int32") == 0 || 
-        strcmp(typeName, "System.UInt32") == 0 ||
-        strcmp(typeName, "System.Int64") == 0 ||
-        strcmp(typeName, "System.UInt64") == 0 ||
-        strcmp(typeName, "System.Int16") == 0 ||
-        strcmp(typeName, "System.UInt16") == 0 ||
-        strcmp(typeName, "System.Byte") == 0 ||
-        strcmp(typeName, "System.SByte") == 0) {
-        // LOGIF("序列化数值类型字段");
-        uint64_t value = 0;
-        memcpy(&value, fieldAddr, il2cpp_class_value_size(fieldClass, nullptr));
+    // 处理数值类型
+    if(strcmp(typeName, "System.Single") == 0) {
+        float value = *(float*)fieldAddr;
         outFile << value;
-        // LOGIF("数值: %" PRIu64, value);
-    } else if (strcmp(typeName, "System.Boolean") == 0) {
-        // LOGIF("序列化布尔类型字段");
-        bool value = false;
-        memcpy(&value, fieldAddr, sizeof(bool));
+    }
+    else if(strcmp(typeName, "System.Double") == 0 || strcmp(typeName, "System.Decimal") == 0) {
+        double value = *(double*)fieldAddr;
+        outFile << value;
+    }
+    else if(strcmp(typeName, "System.Int32") == 0) {
+        int32_t value = *(int32_t*)fieldAddr;
+        outFile << value;
+    }
+    else if(strcmp(typeName, "System.UInt32") == 0) {
+        uint32_t value = *(uint32_t*)fieldAddr;
+        outFile << value;
+    }
+    else if(strcmp(typeName, "System.Int64") == 0) {
+        int64_t value = *(int64_t*)fieldAddr;
+        outFile << value;
+    }
+    else if(strcmp(typeName, "System.UInt64") == 0) {
+        uint64_t value = *(uint64_t*)fieldAddr;
+        outFile << value;
+    }
+    else if(strcmp(typeName, "System.Int16") == 0) {
+        int16_t value = *(int16_t*)fieldAddr;
+        outFile << value;
+    }
+    else if(strcmp(typeName, "System.UInt16") == 0) {
+        uint16_t value = *(uint16_t*)fieldAddr;
+        outFile << value;
+    }
+    else if(strcmp(typeName, "System.Byte") == 0) {
+        uint8_t value = *(uint8_t*)fieldAddr;
+        outFile << (int)value;
+    }
+    else if(strcmp(typeName, "System.SByte") == 0) {
+        int8_t value = *(int8_t*)fieldAddr;
+        outFile << (int)value;
+    }
+    // 处理布尔类型
+    else if (strcmp(typeName, "System.Boolean") == 0) {
+        bool value = *(bool*)fieldAddr;
         outFile << (value ? "true" : "false");
-        // LOGIF("布尔值: %s", value ? "true" : "false");
-    } else if (strcmp(typeName, "System.String") == 0) {
-        // LOGIF("序列化字符串类型字段");
+    }
+    // 处理字符串类型 
+    else if (strcmp(typeName, "System.String") == 0) {
         Il2CppString* value = *(Il2CppString**)fieldAddr;
         outFile << "\"";
         if (value) {
             const Il2CppChar* utf16Str = il2cpp_string_chars(value);
             int utf16Len = il2cpp_string_length(value);
-            std::string utf8Str = Utf16ToUtf8(utf16Str, utf16Len);
-            outFile << utf8Str;
-            // LOGIF("字符串值: %s", utf8Str.c_str());
-        } else {
-            // LOGIF("字符串为空");
+            outFile << Utf16ToUtf8(utf16Str, utf16Len);
         }
         outFile << "\"";
-    } else if (il2cpp_class_is_enum(fieldClass)) {
-        // LOGIF("序列化枚举类型字段");
+    }
+    // 处理枚举类型
+    else if (il2cpp_class_is_enum(fieldClass)) {
         uint64_t value = 0;
         memcpy(&value, fieldAddr, il2cpp_class_value_size(fieldClass, nullptr));
         outFile << value;
-        // LOGIF("枚举值: %" PRIu64, value);
     }
-    // LOGIF("字段值序列化完成");
 }
 
 void JsonSerializer::SerializeArray(std::ofstream& outFile, Il2CppArray* arr, int indent) {
