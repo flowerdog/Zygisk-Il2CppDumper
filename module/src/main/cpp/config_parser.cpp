@@ -358,13 +358,34 @@ bool ConfigParser::ParseAllConfigs(const std::string& dirPath, const std::string
         }
 
         std::string filePath = dirPath + "/" + fileName;
-        LOGIF("处理文件: %s", filePath.c_str());
+        LOGIF("检查文件: %s", filePath.c_str());
+
+        // 先检查文件头
+        FILE* fp = fopen(filePath.c_str(), "rb");
+        if (!fp) {
+            LOGEF("!!!无法打开文件: %s", filePath.c_str());
+            continue;
+        }
+
+        ResFileHead head;
+        bool isConfigFile = false;
+        if (ReadFileHead(fp, head)) {
+            isConfigFile = (head.tag == 0x00002DEF);
+        }
+        fclose(fp);
+
+        if (!isConfigFile) {
+            LOGIF("跳过非配置文件: %s", filePath.c_str());
+            continue;
+        }
+
+        // LOGIF("处理配置文件: %s", filePath.c_str());
 
         // 根据文件名查找类型
         std::string typeName = fileName.substr(0, fileName.find_last_of('.'));
         auto klass = FindConfigClass(nullptr, nullptr, typeName.c_str());
         if (!klass) {
-            LOGEF("!!!找不到类型: %s", typeName.c_str());
+            // LOGEF("!!!找不到类型: %s", typeName.c_str());
             allSuccess = false;
             continue;
         }
