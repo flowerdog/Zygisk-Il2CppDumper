@@ -24,8 +24,6 @@ public:
     static bool ParseConfigFile(const std::string& filePath, Il2CppClass* klass, const std::string& outputDir);
 
 private:
-    // 基础工具函数
-    static std::string Utf16ToUtf8(const Il2CppChar* utf16Str, int utf16Len);
     static std::vector<Il2CppClass*> FindClass(const char* assemblyName, const char* namespaze, const char* className);
     static Il2CppClass* FindOneClass(const char* assemblyName, const char* namespaze, const char* className);
     static Il2CppClass* FindConfigClass(const char* assemblyName, const char* namespaze, const char* className);

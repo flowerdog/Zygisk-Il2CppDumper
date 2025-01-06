@@ -5,30 +5,109 @@
 #include "il2cpp-tabledefs.h"
 #include "log.h"
 
-std::string Utf16ToUtf8(const Il2CppChar* utf16Str, int utf16Len) {
+
+// 首先定义基础工具函数
+std::string JsonSerializer::Utf16ToUtf8(const Il2CppChar* utf16Str, int utf16Len) {
+    // 检查输入参数有效性
+    if (!utf16Str) {
+        char errorMsg[64];
+        #if defined(__LP64__)
+        snprintf(errorMsg, sizeof(errorMsg), "转换失败+0x%lx", reinterpret_cast<uintptr_t>(utf16Str));
+        #else
+        snprintf(errorMsg, sizeof(errorMsg), "转换失败+0x%x", reinterpret_cast<uintptr_t>(utf16Str));
+        #endif
+        LOGEF("UTF16字符串为空");
+        return errorMsg;
+    }
+
+    // 空字符串直接返回
+    if (utf16Len <= 0) {
+        return "";
+    }
+
     std::string utf8Str;
+    utf8Str.reserve(utf16Len * 3); // 预分配足够空间,避免频繁扩容
+
+    // 用于存储原始字节序的字符串
+    std::string hexBytes;
+    hexBytes.reserve(utf16Len * 6); // 每个UTF-16字符最多需要4个字节表示(0xXXXX)
+
+    // 逐字符转换
     for (int i = 0; i < utf16Len; i++) {
         Il2CppChar ch = utf16Str[i];
+        
+        // 添加原始字节到hexBytes用于调试
+        char hexBuf[8];
+        snprintf(hexBuf, sizeof(hexBuf), "0x%04X ", ch);
+        hexBytes += hexBuf;
+
+        // 检查非法字符
+        if (ch == 0 || ch > 0xFFFF) {
+            LOGEF("检测到非法UTF16字符: %04X", ch);
+            return "不是合法的utf8字符串: " + hexBytes;
+        }
+
+        // 处理特殊字符
         if (ch == '\n') {
             utf8Str += "\\n";
-        } else if (ch == '\r') {
+            continue;
+        } 
+        if (ch == '\r') {
             utf8Str += "\\r"; 
-        } else if (ch == '"') {
+            continue;
+        }
+        if (ch == '\t') {
+            utf8Str += "\\t";
+            continue;
+        }
+        if (ch == '\"') {
             utf8Str += "\\\"";
-        } else if (ch <= 0x7F) {
-            // ASCII 字符
+            continue;
+        }
+        if (ch == '\\') {
+            utf8Str += "\\\\";
+            continue;
+        }
+        
+        // 检查控制字符
+        if (ch < 0x20 && ch != '\n' && ch != '\r' && ch != '\t') {
+            LOGEF("检测到非法控制字符: %04X", ch);
+            return "不是合法的utf8字符串: " + hexBytes;
+        }
+
+        // 检查代理项范围
+        if (ch >= 0xD800 && ch <= 0xDFFF) {
+            LOGEF("检测到UTF16代理项字符: %04X", ch);
+            return "不是合法的utf8字符串: " + hexBytes;
+        }
+        
+        // UTF-8编码转换
+        if (ch <= 0x7F) {
+            // ASCII 字符,单字节
             utf8Str += static_cast<char>(ch);
         } else if (ch <= 0x7FF) {
-            // 2 字节 UTF-8
-            utf8Str += static_cast<char>(0xC0 | (ch >> 6));
-            utf8Str += static_cast<char>(0x80 | (ch & 0x3F));
+            // 2字节 UTF-8
+            char b1 = static_cast<char>(0xC0 | (ch >> 6));
+            char b2 = static_cast<char>(0x80 | (ch & 0x3F));
+            utf8Str += b1;
+            utf8Str += b2;
         } else {
-            // 3 字节 UTF-8
-            utf8Str += static_cast<char>(0xE0 | (ch >> 12));
-            utf8Str += static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
-            utf8Str += static_cast<char>(0x80 | (ch & 0x3F));
+            // 3字节 UTF-8
+            char b1 = static_cast<char>(0xE0 | (ch >> 12));
+            char b2 = static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
+            char b3 = static_cast<char>(0x80 | (ch & 0x3F));
+            utf8Str += b1;
+            utf8Str += b2;
+            utf8Str += b3;
         }
     }
+
+    // 检查转换结果
+    if (utf8Str.empty()) {
+        LOGEF("转换结果为空");
+        return "不是合法的utf8字符串: " + hexBytes;
+    }
+
     return utf8Str;
 }
 
@@ -51,7 +130,29 @@ void JsonSerializer::SerializeObject(std::ofstream& outFile, Il2CppObject* obj, 
         const Il2CppChar* utf16Str = il2cpp_string_chars(strObj);
         int utf16Len = il2cpp_string_length(strObj);
         std::string utf8Str = Utf16ToUtf8(utf16Str, utf16Len);
-        outFile << "\"" << utf8Str << "\"";
+        
+        // 检查utf8字符串是否包含非法字符
+        bool hasInvalidChar = false;
+        for(char c : utf8Str) {
+            if((unsigned char)c < 0x20 && c != '\n' && c != '\r' && c != '\t') {
+                hasInvalidChar = true;
+                break;
+            }
+        }
+        
+        if(hasInvalidChar) {
+            // 如果包含非法字符,输出十六进制表示
+            outFile << "\"";
+            for(char c : utf8Str) {
+                char hex[8];
+                snprintf(hex, sizeof(hex), "\\x%02X", (unsigned char)c);
+                outFile << hex;
+            }
+            outFile << "\"";
+        } else {
+            outFile << "\"" << utf8Str << "\"";
+        }
+        
         // LOGIF("字符串序列化完成，长度: %d", utf16Len);
         return;
     }

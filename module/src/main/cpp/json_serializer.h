@@ -3,8 +3,11 @@
 
 #include <fstream>
 #include "il2cpp-class.h"
+#include <string>
 
 class JsonSerializer {
+private:
+    static std::string Utf16ToUtf8(const Il2CppChar* utf16Str, int utf16Len);
 public:
     static void SerializeObject(std::ofstream& outFile, Il2CppObject* obj, int indent);
     static void SerializeField(std::ofstream& outFile, Il2CppObject* obj, FieldInfo* field, int indent);

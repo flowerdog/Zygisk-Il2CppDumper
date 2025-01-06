@@ -12,27 +12,6 @@
 #define FIELD_ATTRIBUTE_STATIC 0x0010
 
 
-// 首先定义基础工具函数
-std::string ConfigParser::Utf16ToUtf8(const Il2CppChar* utf16Str, int utf16Len) {
-    std::string utf8Str;
-    for (int i = 0; i < utf16Len; i++) {
-        Il2CppChar ch = utf16Str[i];
-        if (ch <= 0x7F) {
-            // ASCII 字符
-            utf8Str += static_cast<char>(ch);
-        } else if (ch <= 0x7FF) {
-            // 2 字节 UTF-8
-            utf8Str += static_cast<char>(0xC0 | (ch >> 6));
-            utf8Str += static_cast<char>(0x80 | (ch & 0x3F));
-        } else {
-            // 3 字节 UTF-8
-            utf8Str += static_cast<char>(0xE0 | (ch >> 12));
-            utf8Str += static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
-            utf8Str += static_cast<char>(0x80 | (ch & 0x3F));
-        }
-    }
-    return utf8Str;
-}
 
 Il2CppClass* ConfigParser::FindConfigClass(const char* assemblyName, const char* namespaze, const char* className) {
     auto classes = FindClass(assemblyName, namespaze, className);
@@ -296,50 +275,7 @@ bool ConfigParser::SaveAsJson(const char* outputPath, Il2CppArray* configArray) 
     return true;
 }
 
-void ConfigParser::PrintEquipConfigFields(Il2CppObject* equipConfig, const char* prefix) {
-    return;
 
-    auto equipConfigClass = il2cpp_object_get_class(equipConfig);
-    LOGIF("%s字段值:", prefix);
-    void* iter = nullptr;
-    FieldInfo* field;
-    while ((field = il2cpp_class_get_fields(equipConfigClass, &iter)) != nullptr) {
-        const char* fieldName = il2cpp_field_get_name(field);
-        const Il2CppType* fieldType = il2cpp_field_get_type(field);
-        const char* typeName = il2cpp_type_get_name(fieldType);
-        
-        // 根据类型名称判断
-        if (strcmp(typeName, "System.Int32") == 0 || 
-            strcmp(typeName, "System.UInt32") == 0 ||
-            strcmp(typeName, "System.Int64") == 0 ||
-            strcmp(typeName, "System.UInt64") == 0 ||
-            strcmp(typeName, "System.Int16") == 0 ||
-            strcmp(typeName, "System.UInt16") == 0 ||
-            strcmp(typeName, "System.Byte") == 0 ||
-            strcmp(typeName, "System.SByte") == 0 ||
-            strcmp(typeName, "System.Boolean") == 0) {
-            uint64_t value = 0;
-            il2cpp_field_get_value(equipConfig, field, &value);
-            LOGIF("  字段: %s = %" PRIu64 " (类型: %s)", fieldName, value, typeName);
-        } else if (strcmp(typeName, "System.String") == 0) {
-            Il2CppString* value = nullptr;
-            il2cpp_field_get_value(equipConfig, field, &value);
-            std::string strValue;
-            if (value) {
-                const Il2CppChar* utf16Str = il2cpp_string_chars(value);
-                int utf16Len = il2cpp_string_length(value);
-                strValue = Utf16ToUtf8(utf16Str, utf16Len);
-            } else {
-                strValue = "null";
-            }
-            LOGIF("  字段: %s = %s (类型: %s)", fieldName, strValue.c_str(), typeName);
-        } else {
-            void* value = nullptr;
-            il2cpp_field_get_value(equipConfig, field, &value);
-            LOGIF("  字段: %s = %p (类型: %s)", fieldName, value, typeName);
-        }
-    }
-} 
 
 bool ConfigParser::ParseAllConfigs(const std::string& dirPath, const std::string& outputDir) {
     LOGIF("开始解析目录下的所有配置文件: %s", dirPath.c_str());
