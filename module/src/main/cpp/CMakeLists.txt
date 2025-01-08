@@ -43,6 +43,7 @@ add_library(${MODULE_NAME} SHARED
         config_parser.cpp
         il2cpp-api.cpp
         json_serializer.cpp
+        util.cpp
         ${xdl-src})
 target_link_libraries(${MODULE_NAME} log)
 

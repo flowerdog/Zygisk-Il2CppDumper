@@ -7,55 +7,12 @@
 #include "il2cpp-tabledefs.h"
 #include "json_serializer.h"
 #include <unordered_map>
+#include "util.h"
 
 // 字段属性定义
 #define FIELD_ATTRIBUTE_STATIC 0x0010
 
 
-
-Il2CppClass* ConfigParser::FindConfigClass(const char* assemblyName, const char* namespaze, const char* className) {
-    auto classes = FindClass(assemblyName, namespaze, className);
-    if (classes.empty()) {
-        return nullptr;
-    }
-
-    // 单个类直接返回
-    if (classes.size() == 1) {
-        auto klass = classes[0];
-        return klass;
-    }
-
-    // 遍历类查找包含必需方法的类
-    for (auto klass : classes) {
-        void* iter = nullptr;
-        int methodCount = 0;
-        const MethodInfo* method = nullptr;
-        
-        while ((method = il2cpp_class_get_methods(klass, &iter)) != nullptr) {
-            if (!(il2cpp_method_get_flags(method, nullptr) & METHOD_ATTRIBUTE_PUBLIC)) {
-                continue;
-            }
-
-            const char* name = il2cpp_method_get_name(method);
-            if (strcmp(name, "create") == 0 || 
-                strcmp(name, "pack") == 0 || 
-                strcmp(name, "unpack") == 0) {
-                methodCount++;
-            }
-        }
-        
-        if (methodCount == 3) {
-            LOGIF("找到目标类: %s, 程序集: %s, 命名空间: %s", 
-                il2cpp_class_get_name(klass),
-                il2cpp_class_get_assemblyname(klass),
-                il2cpp_class_get_namespace(klass));
-            return klass;
-        }
-    }
-    
-    LOGEF("未找到包含必需方法的类");
-    return nullptr;
-}
 
 Il2CppClass* ConfigParser::FindOneClass(const char* assemblyName, const char* namespaze, const char* className) {
     auto classes = FindClass(assemblyName, namespaze, className);
@@ -279,67 +236,82 @@ bool ConfigParser::SaveAsJson(const char* outputPath, Il2CppArray* configArray) 
 
 bool ConfigParser::ParseAllConfigs(const std::string& dirPath, const std::string& outputDir) {
     LOGIF("开始解析目录下的所有配置文件: %s", dirPath.c_str());
-    DIR* dir = opendir(dirPath.c_str());
-    if (!dir) {
-        LOGEF("!!!无法打开目录: %s", dirPath.c_str());
-        return false;
-    }
-
+    
     bool allSuccess = true;
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != nullptr) {
-        std::string fileName = entry->d_name;
-        if (fileName == "." || fileName == "..") {
-            continue;
-        }
+    
+    // 处理配置目录
+    std::vector<std::pair<std::string, std::pair<std::string, std::string>>> configDirs = {
+        {"default", {"GameProto.dll", "ResDef"}},
+        {"fp", {"BattleCore.dll", "BattleCore"}}
+    };
 
-        std::string filePath = dirPath + "/" + fileName;
-        LOGIF("检查文件: %s", filePath.c_str());
-
-        // 先检查文件头
-        FILE* fp = fopen(filePath.c_str(), "rb");
-        if (!fp) {
-            LOGEF("!!!无法打开文件: %s", filePath.c_str());
-            continue;
-        }
-
-        ResFileHead head;
-        bool isConfigFile = false;
-        if (ReadFileHead(fp, head)) {
-            isConfigFile = (head.tag == 0x00002DEF);
-        }
-        fclose(fp);
-
-        if (!isConfigFile) {
-            LOGIF("跳过非配置文件: %s", filePath.c_str());
-            continue;
-        }
-
-        // LOGIF("处理配置文件: %s", filePath.c_str());
-
-        // 根据文件名查找类型
-        std::string typeName = fileName.substr(0, fileName.find_last_of('.'));
-        auto klass = FindConfigClass(nullptr, nullptr, typeName.c_str());
-        if (!klass) {
-            // LOGEF("!!!找不到类型: %s", typeName.c_str());
+    for (const auto& dirInfo : configDirs) {
+        std::string configDir = dirPath + "/" + dirInfo.first;
+        DIR* dir = opendir(configDir.c_str());
+        if (!dir) {
+            LOGEF("!!!无法打开目录: %s", configDir.c_str());
             allSuccess = false;
             continue;
         }
 
-        if (!ParseConfigFile(filePath, klass, outputDir)) {
-            LOGEF("!!!解析文件失败: %s", filePath.c_str());
-            allSuccess = false;
-            continue;
+        LOGIF("处理 %s 目录: %s", dirInfo.first.c_str(), configDir.c_str());
+        struct dirent* entry;
+        while ((entry = readdir(dir)) != nullptr) {
+            std::string fileName = entry->d_name;
+            if (fileName == "." || fileName == "..") continue;
+
+            std::string filePath = configDir + "/" + fileName;
+            // LOGIF("检查文件: %s", filePath.c_str());
+
+            // 检查文件头
+            FILE* fp = fopen(filePath.c_str(), "rb");
+            if (!fp) {
+                LOGEF("!!!无法打开文件: %s", filePath.c_str());
+                continue;
+            }
+
+            ResFileHead head;
+            bool isConfigFile = ReadFileHead(fp, head) && (head.tag == 0x00002DEF);
+            fclose(fp);
+
+            if (!isConfigFile) {
+                LOGIF("跳过非配置文件: %s", filePath.c_str());
+                continue;
+            }
+
+            // 处理配置文件
+            std::string typeName = fileName.substr(0, fileName.find_last_of('.'));
+            Il2CppClass* klass = FindOneClass(dirInfo.second.first.c_str(), 
+                                               dirInfo.second.second.c_str(), 
+                                               typeName.c_str());
+            std::string targetDir = outputDir + "/" + dirInfo.first;
+
+            if (!klass) {
+                LOGEF("!!!找不到类型: %s", typeName.c_str());
+                allSuccess = false;
+                continue;
+            }
+
+            if (!util::EnsureDirectoryExists(targetDir)) {
+                LOGEF("!!!创建目标目录失败: %s", targetDir.c_str());
+                allSuccess = false;
+                continue;
+            }
+
+            if (!ParseConfigFile(filePath, klass, targetDir)) {
+                LOGEF("!!!解析文件失败: %s", filePath.c_str());
+                allSuccess = false;
+            }
         }
+        closedir(dir);
     }
 
-    closedir(dir);
     LOGIF("所有配置文件解析完成!");
     return allSuccess;
 }
 
 bool ConfigParser::ParseConfigFile(const std::string& filePath, Il2CppClass* klass, const std::string& outputDir) {
-    // LOGIF("开始解析配置文件: %s", filePath.c_str());
+    LOGIF("开始解析配置文件: %s", filePath.c_str());
     
     // 打开输入文件
     FILE* fp = fopen(filePath.c_str(), "rb");
@@ -363,7 +335,7 @@ bool ConfigParser::ParseConfigFile(const std::string& filePath, Il2CppClass* kla
         return false;
     }
 
-    // LOGIF("文件头tag验证成功");
+    LOGIF("文件头tag验证成功");
 
     // 获取剩余数据大小
     size_t dataSize = head.len - 20;  // 文件头大小为20字节
@@ -537,13 +509,18 @@ bool ConfigParser::ParseConfigFile(const std::string& filePath, Il2CppClass* kla
         return false;
     }
 
+    // LOGIF("开始导出为 JSON");
+
     outFile << "[\n";
     int32_t length = il2cpp_array_length(configArray);
+    // LOGIF("导出为 JSON 的配置项数量: %d", length);
     for (int32_t i = 0; i < length; i++) {
         void** elementAddr = (void**)((char*)configArray + kIl2CppSizeOfArray + i * sizeof(void*));
         Il2CppObject* item = (Il2CppObject*)*elementAddr;
         
         outFile << "  ";
+
+        // LOGIF("导出为 JSON 的配置项: %d/%d", i + 1, length);
         JsonSerializer::SerializeObject(outFile, item, 2);
         
         if (i < length - 1) {
