@@ -35,7 +35,7 @@ private:
     static bool IsArray(const Il2CppType* type);
     
     // 特殊类型处理
-    static float GetFPValue(void* fpValue, Il2CppClass* klass);
+    static float GetFPValue(void* fpValue, Il2CppClass* klass, bool useMethod = false);
     static void SerializeBasicType(std::ofstream& outFile, const std::string& typeName, void* value);
     static void SerializeString(std::ofstream& outFile, Il2CppString* str);
 

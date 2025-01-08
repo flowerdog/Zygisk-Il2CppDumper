@@ -131,22 +131,32 @@ bool JsonSerializer::IsArray(const Il2CppType* type) {
  * 获取FP类型的浮点值
  * @param fpValue FP对象指针
  * @param klass FP类指针
+ * @param useMethod 是否使用AsFloat方法解析
  * @return 浮点值
  */
-float JsonSerializer::GetFPValue(void* fpValue, Il2CppClass* klass) {
-    const MethodInfo* asFloatMethod = il2cpp_class_get_method_from_name(klass, "AsFloat", 0);
-    if (!asFloatMethod) {
-        LOGEF("找不到FP.AsFloat方法");
-        return 0.0f;
-    }
+float JsonSerializer::GetFPValue(void* fpValue, Il2CppClass* klass, bool useMethod) {
+    if (useMethod) {
+        const MethodInfo* asFloatMethod = il2cpp_class_get_method_from_name(klass, "AsFloat", 0);
+        if (!asFloatMethod) {
+            LOGEF("找不到FP.AsFloat方法");
+            return 0.0f;
+        }
 
-    Il2CppException* exc = nullptr;
-    float result = *(float*)il2cpp_runtime_invoke(asFloatMethod, fpValue, nullptr, &exc);
-    if (exc) {
-        LOGEF("调用FP.AsFloat失败");
-        return 0.0f;
+        Il2CppException* exc = nullptr;
+        float result = *(float*)il2cpp_runtime_invoke(asFloatMethod, fpValue, nullptr, &exc);
+        if (exc) {
+            LOGEF("调用FP.AsFloat失败");
+            return 0.0f;
+        }
+        return result;
+    } else {
+        // 将FP值视为int64并转换为定点小数
+        int64_t rawValue = *(int64_t*)fpValue;
+        // 定点数格式: 高32位为整数部分,低32位为小数部分
+        // 转换为浮点数: 将64位整数除以2^32
+        constexpr double ONE = 4294967296.0; // 2^32
+        return (double)rawValue / ONE;
     }
-    return result;
 }
 
 /**
@@ -201,13 +211,37 @@ void JsonSerializer::SerializeBasicType(std::ofstream& outFile, const std::strin
  * @param str Il2Cpp字符串指针
  */
 void JsonSerializer::SerializeString(std::ofstream& outFile, Il2CppString* str) {
-    outFile << "\"";
+    outFile << "\""; // JSON字符串开始引号
     if (str) {
         const Il2CppChar* utf16Str = il2cpp_string_chars(str);
         int utf16Len = il2cpp_string_length(str);
-        outFile << Utf16ToUtf8(utf16Str, utf16Len);
+        std::string utf8Str = Utf16ToUtf8(utf16Str, utf16Len);
+        
+        // 对JSON特殊字符进行转义
+        for (char c : utf8Str) {
+            switch (c) {
+                case '\"': outFile << "\\\""; break; // 字符串内的引号需要转义
+                case '\\': outFile << "\\\\"; break;
+                case '/':  outFile << "\\/"; break;
+                case '\b': outFile << "\\b"; break;
+                case '\f': outFile << "\\f"; break;
+                case '\n': outFile << "\\n"; break;
+                case '\r': outFile << "\\r"; break;
+                case '\t': outFile << "\\t"; break;
+                default:
+                    // 对于ASCII控制字符(小于0x20的字符),使用\uXXXX格式进行Unicode转义
+                    // 其他字符则直接输出
+                    if (static_cast<unsigned char>(c) < 0x20) {
+                        char buf[7];
+                        snprintf(buf, sizeof(buf), "\\u%04x", c);
+                        outFile << buf;
+                    } else {
+                        outFile << c;
+                    }
+            }
+        }
     }
-    outFile << "\"";
+    outFile << "\""; // JSON字符串结束引号
 }
 
 /**

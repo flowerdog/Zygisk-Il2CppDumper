@@ -243,19 +243,28 @@ bool ConfigParser::ParseAllConfigs(const std::string& dirPath, const std::string
     LOGIF("开始解析目录下的所有配置文件: %s", dirPath.c_str());
     
     bool allSuccess = true;
-    
     // 处理配置目录
-    std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::string>>>> configDirs = {
-        {"default", {
-            {"GameProto.dll", "ResDef"},
-            {"BattleCore.dll", "BattleCore"},
-            {"GameNative.dll", "ResDef"},
-        }},
-        {"fp", {
-            {"BattleCore.dll", "BattleCore"},
-            {"GameProto.dll", "ResDef"},
-            {"GameNative.dll", "ResDef"},
-        }}
+    struct AssemblyInfo {
+        std::string dllName;
+        std::string nameSpace;
+        bool makeReCheckWarning;
+
+        //add constructor
+        AssemblyInfo(const char* dllName, const char* nameSpace, bool makeReCheckWarning)
+            : dllName(dllName), nameSpace(nameSpace), makeReCheckWarning(makeReCheckWarning) {}
+    };
+
+    static const std::vector<std::pair<std::string, std::vector<AssemblyInfo>>> configDirs = {
+        std::make_pair("default", std::vector<AssemblyInfo>{
+            AssemblyInfo{"GameProto.dll", "ResDef", false},
+            AssemblyInfo{"BattleCore.dll", "BattleCore", true},
+            AssemblyInfo{"GameNative.dll", "ResDef", false}
+        }),
+        std::make_pair("fp", std::vector<AssemblyInfo>{
+            AssemblyInfo{"BattleCore.dll", "BattleCore", false},
+            AssemblyInfo{"GameProto.dll", "ResDef", true}, 
+            AssemblyInfo{"GameNative.dll", "ResDef", true}
+        })
     };
 
     for (const auto& dirInfo : configDirs) {
@@ -298,11 +307,15 @@ bool ConfigParser::ParseAllConfigs(const std::string& dirPath, const std::string
             std::string targetDir = outputDir + "/" + dirInfo.first;
 
             // 根据目录选择搜索路径
+            bool makeReCheckWarning = false;
             for (const auto& assemblyInfo : dirInfo.second) {
-                klass = FindOneClass(assemblyInfo.first.c_str(),
-                                   assemblyInfo.second.c_str(),
+                klass = FindOneClass(assemblyInfo.dllName.c_str(),
+                                   assemblyInfo.nameSpace.c_str(),
                                    typeName.c_str());
-                if (klass) break;
+                if (klass) {
+                    makeReCheckWarning = assemblyInfo.makeReCheckWarning;
+                    break;
+                }
             }
 
             if (!klass) {
@@ -315,6 +328,12 @@ bool ConfigParser::ParseAllConfigs(const std::string& dirPath, const std::string
                 LOGEF("!!!创建目标目录失败: %s", targetDir.c_str());
                 allSuccess = false;
                 continue;
+            }
+
+            LOGIF("开始解析配置文件: %s", filePath.c_str());
+
+            if (makeReCheckWarning) {
+                LOGIF("!!!警告: 配置文件: %s 可信度存疑，需要重新检查", filePath.c_str());
             }
 
             if (!ParseConfigFile(filePath, klass, targetDir)) {
@@ -330,7 +349,6 @@ bool ConfigParser::ParseAllConfigs(const std::string& dirPath, const std::string
 }
 
 bool ConfigParser::ParseConfigFile(const std::string& filePath, Il2CppClass* klass, const std::string& outputDir) {
-    LOGIF("开始解析配置文件: %s", filePath.c_str());
     
     // 打开输入文件
     FILE* fp = fopen(filePath.c_str(), "rb");
