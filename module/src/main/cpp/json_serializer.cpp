@@ -6,7 +6,12 @@
 #include "il2cpp-api.h"
 #include "il2cpp-tabledefs.h"
 
-// UTF16 转 UTF8 实现
+/**
+ * 将UTF16字符串转换为UTF8字符串
+ * @param utf16Str UTF16字符串指针
+ * @param utf16Len UTF16字符串长度
+ * @return UTF8编码的字符串
+ */
 std::string JsonSerializer::Utf16ToUtf8(const Il2CppChar* utf16Str, int utf16Len) {
     if (!utf16Str || utf16Len <= 0) {
         return "";
@@ -52,16 +57,29 @@ std::string JsonSerializer::Utf16ToUtf8(const Il2CppChar* utf16Str, int utf16Len
     return utf8Str;
 }
 
-// 类型判断辅助函数
+/**
+ * 判断类是否为字符串类型
+ * @param klass Il2Cpp类指针
+ * @return 是否为字符串类型
+ */
 bool JsonSerializer::IsString(const Il2CppClass* klass) {
     return strcmp(il2cpp_class_get_name((Il2CppClass*)klass), "String") == 0;
 }
 
+/**
+ * 判断类是否为FP类型
+ * @param klass Il2Cpp类指针
+ * @return 是否为FP类型
+ */
 bool JsonSerializer::IsFP(const Il2CppClass* klass) {
     return strcmp(il2cpp_class_get_name((Il2CppClass*)klass), "FP") == 0;
 }
 
-// 获取基础类型
+/**
+ * 获取基础类型名称
+ * @param type Il2Cpp类型指针
+ * @return 基础类型名称,如果不是基础类型则返回空字符串
+ */
 std::string JsonSerializer::GetBasicType(const Il2CppType* type) {
     if (!type) {
         LOGEF("!!!类型指针为空");
@@ -91,15 +109,30 @@ std::string JsonSerializer::GetBasicType(const Il2CppType* type) {
     return "";
 }
 
+/**
+ * 判断是否为基础类型
+ * @param type Il2Cpp类型指针
+ * @return 是否为基础类型
+ */
 bool JsonSerializer::IsBasicType(const Il2CppType* type) {
     return !GetBasicType(type).empty();
 }
 
+/**
+ * 判断是否为数组类型
+ * @param type Il2Cpp类型指针
+ * @return 是否为数组类型
+ */
 bool JsonSerializer::IsArray(const Il2CppType* type) {
     return type->type == IL2CPP_TYPE_SZARRAY || type->type == IL2CPP_TYPE_ARRAY;
 }
 
-// 特殊类型处理
+/**
+ * 获取FP类型的浮点值
+ * @param fpValue FP对象指针
+ * @param klass FP类指针
+ * @return 浮点值
+ */
 float JsonSerializer::GetFPValue(void* fpValue, Il2CppClass* klass) {
     const MethodInfo* asFloatMethod = il2cpp_class_get_method_from_name(klass, "AsFloat", 0);
     if (!asFloatMethod) {
@@ -116,6 +149,12 @@ float JsonSerializer::GetFPValue(void* fpValue, Il2CppClass* klass) {
     return result;
 }
 
+/**
+ * 序列化基础类型值
+ * @param outFile 输出文件流
+ * @param typeName 类型名称
+ * @param value 值指针
+ */
 void JsonSerializer::SerializeBasicType(std::ofstream& outFile, const std::string& typeName, void* value) {
     if (typeName == "System.SByte") {
         outFile << (int)*(int8_t*)value;
@@ -156,6 +195,11 @@ void JsonSerializer::SerializeBasicType(std::ofstream& outFile, const std::strin
     }
 }
 
+/**
+ * 序列化字符串
+ * @param outFile 输出文件流
+ * @param str Il2Cpp字符串指针
+ */
 void JsonSerializer::SerializeString(std::ofstream& outFile, Il2CppString* str) {
     outFile << "\"";
     if (str) {
@@ -166,7 +210,12 @@ void JsonSerializer::SerializeString(std::ofstream& outFile, Il2CppString* str) 
     outFile << "\"";
 }
 
-// 主要序列化函数
+/**
+ * 序列化对象
+ * @param outFile 输出文件流
+ * @param obj Il2Cpp对象指针
+ * @param indent 缩进层级
+ */
 void JsonSerializer::SerializeObject(std::ofstream& outFile, Il2CppObject* obj, int indent) {
     if (!obj) {
         outFile << "null";
@@ -209,6 +258,13 @@ void JsonSerializer::SerializeObject(std::ofstream& outFile, Il2CppObject* obj, 
     outFile << "\n" << std::string(indent, ' ') << "}";
 }
 
+/**
+ * 序列化字段
+ * @param outFile 输出文件流
+ * @param obj 对象指针
+ * @param field 字段信息
+ * @param indent 缩进层级
+ */
 void JsonSerializer::SerializeField(std::ofstream& outFile, Il2CppObject* obj, FieldInfo* field, int indent) {
     // LOGIF("SerializeField: name: %s, type: %s", il2cpp_field_get_name(field), il2cpp_type_get_name(il2cpp_field_get_type(field)));
 
@@ -217,6 +273,13 @@ void JsonSerializer::SerializeField(std::ofstream& outFile, Il2CppObject* obj, F
     SerializeFieldValue(outFile, field, fieldAddr, indent);
 }
 
+/**
+ * 序列化字段值
+ * @param outFile 输出文件流
+ * @param field 字段信息
+ * @param fieldAddr 字段地址
+ * @param indent 缩进层级
+ */
 void JsonSerializer::SerializeFieldValue(std::ofstream& outFile, FieldInfo* field, void* fieldAddr, int indent) {
 
     // LOGIF("SerializeFieldValue: name: %s, type: %s", il2cpp_field_get_name(field), il2cpp_type_get_name(il2cpp_field_get_type(field)));
@@ -276,6 +339,12 @@ void JsonSerializer::SerializeFieldValue(std::ofstream& outFile, FieldInfo* fiel
     SerializeObject(outFile, value, indent);
 }
 
+/**
+ * 序列化数组
+ * @param outFile 输出文件流
+ * @param arr 数组指针
+ * @param indent 缩进层级
+ */
 void JsonSerializer::SerializeArray(std::ofstream& outFile, Il2CppArray* arr, int indent) {
     if (!arr) {
         outFile << "null";
@@ -315,6 +384,13 @@ void JsonSerializer::SerializeArray(std::ofstream& outFile, Il2CppArray* arr, in
     outFile << std::string(indent, ' ') << "]";
 }
 
+/**
+ * 序列化值类型
+ * @param outFile 输出文件流
+ * @param klass 类指针
+ * @param value 值指针
+ * @param indent 缩进层级
+ */
 void JsonSerializer::SerializeValueType(std::ofstream& outFile, Il2CppClass* klass, void* value, int indent) {
     // 处理 FP 类型
     if (IsFP(klass)) {

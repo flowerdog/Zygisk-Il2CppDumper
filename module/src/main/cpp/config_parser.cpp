@@ -15,6 +15,14 @@
 
 
 Il2CppClass* ConfigParser::FindOneClass(const char* assemblyName, const char* namespaze, const char* className) {
+    if (!assemblyName || !namespaze || !className) {
+        LOGEF("!!!参数不能为空: assemblyName=%s, namespaze=%s, className=%s", 
+              assemblyName ? assemblyName : "null",
+              namespaze ? namespaze : "null", 
+              className ? className : "null");
+        return nullptr;
+    }
+
     auto classes = FindClass(assemblyName, namespaze, className);
     if (classes.empty()) {
         return nullptr;
@@ -26,34 +34,30 @@ Il2CppClass* ConfigParser::FindOneClass(const char* assemblyName, const char* na
 static std::unordered_map<std::string, std::vector<Il2CppClass*>> classCache;
 static bool hasLoggedTypes = false;
 
-// FindClass 函数用于查找 IL2CPP 类型
-// 主要功能:
-// 1. 参数检查和缓存查找
-// 2. 获取 IL2CPP domain 和程序集列表
-// 3. 遍历程序集查找类型:
-//    - 如果指定了程序集名称,只在指定程序集中查找
-//    - 如果指定了命名空间,直接使用 il2cpp_class_from_name 查找
-//    - 否则遍历所有类型进行匹配
-// 4. 记录查找结果并输出日志
-// 5. 将结果保存到缓存
+/**
+ * 查找 IL2CPP 类型
+ * @param assemblyName 程序集名称,可选
+ * @param namespaze 命名空间,可选 
+ * @param className 类名,必填
+ * @return 找到的类型列表
+ */
 std::vector<Il2CppClass*> ConfigParser::FindClass(const char* assemblyName, const char* namespaze, const char* className) {
-    // 检查参数
+    // 参数检查
     if (!className) {
         LOGEF("!!!类名不能为空");
         return {};
     }
 
-    // 构建缓存键
+    // 检查缓存
     std::string cacheKey = std::string(className) + "|" + 
                           (namespaze ? namespaze : "") + "|" + 
                           (assemblyName ? assemblyName : "");
-    
-    // 检查缓存
     auto it = classCache.find(cacheKey);
     if (it != classCache.end()) {
         return it->second;
     }
 
+    // 获取 IL2CPP 运行时信息
     auto domain = il2cpp_domain_get();
     if (!domain) {
         LOGEF("!!!获取 IL2CPP domain 失败");
@@ -67,10 +71,11 @@ std::vector<Il2CppClass*> ConfigParser::FindClass(const char* assemblyName, cons
         return {};
     }
 
+    // 查找结果
     std::vector<Il2CppClass*> foundClasses;
     std::vector<std::pair<std::string, std::string>> foundLocations;
 
-    // 遍历程序集
+    // 遍历程序集查找类型
     for (size_t i = 0; i < size; i++) {
         auto assembly = assemblies[i];
         if (!assembly) continue;
@@ -81,12 +86,12 @@ std::vector<Il2CppClass*> ConfigParser::FindClass(const char* assemblyName, cons
         const char* currentAssemblyName = il2cpp_image_get_name(image);
         if (!currentAssemblyName) continue;
 
-        // 如果指定了程序集名称且不匹配,跳过此程序集
+        // 检查程序集名称
         if (assemblyName && strcmp(currentAssemblyName, assemblyName) != 0) {
             continue;
         }
 
-        // 如果指定了命名空间,直接查找
+        // 指定命名空间时直接查找
         if (namespaze) {
             auto result = il2cpp_class_from_name(image, namespaze, className);
             if (result) {
@@ -105,10 +110,12 @@ std::vector<Il2CppClass*> ConfigParser::FindClass(const char* assemblyName, cons
             const char* klassName = il2cpp_class_get_name(klass);
             if (!klassName) continue;
 
+            // 调试日志
             if (!hasLoggedTypes && !assemblyName) {
                 LOGIF("遍历类型: %s", klassName);
             }
 
+            // 匹配类名
             if (strcmp(klassName, className) == 0) {
                 foundClasses.push_back(klass);
                 const char* ns = il2cpp_class_get_namespace(klass);
@@ -121,14 +128,12 @@ std::vector<Il2CppClass*> ConfigParser::FindClass(const char* assemblyName, cons
         hasLoggedTypes = true;
     }
 
-    // 记录查找结果
+    // 输出查找结果
     if (foundClasses.size() > 1) {
         LOGWF("!!!警告：找到多个同名类型 %s，总共 %zu 个", className, foundClasses.size());
         for (const auto& loc : foundLocations) {
             LOGWF("!!!  - 程序集: %s, 命名空间: %s", loc.first.c_str(), loc.second.c_str());
         }
-    } else if (foundClasses.empty()) {
-        LOGEF("!!!未找到类型 %s", className);
     }
 
     // 保存到缓存
@@ -240,9 +245,17 @@ bool ConfigParser::ParseAllConfigs(const std::string& dirPath, const std::string
     bool allSuccess = true;
     
     // 处理配置目录
-    std::vector<std::pair<std::string, std::pair<std::string, std::string>>> configDirs = {
-        {"default", {"GameProto.dll", "ResDef"}},
-        {"fp", {"BattleCore.dll", "BattleCore"}}
+    std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::string>>>> configDirs = {
+        {"default", {
+            {"GameProto.dll", "ResDef"},
+            {"BattleCore.dll", "BattleCore"},
+            {"GameNative.dll", "ResDef"},
+        }},
+        {"fp", {
+            {"BattleCore.dll", "BattleCore"},
+            {"GameProto.dll", "ResDef"},
+            {"GameNative.dll", "ResDef"},
+        }}
     };
 
     for (const auto& dirInfo : configDirs) {
@@ -281,10 +294,16 @@ bool ConfigParser::ParseAllConfigs(const std::string& dirPath, const std::string
 
             // 处理配置文件
             std::string typeName = fileName.substr(0, fileName.find_last_of('.'));
-            Il2CppClass* klass = FindOneClass(dirInfo.second.first.c_str(), 
-                                               dirInfo.second.second.c_str(), 
-                                               typeName.c_str());
+            Il2CppClass* klass = nullptr;
             std::string targetDir = outputDir + "/" + dirInfo.first;
+
+            // 根据目录选择搜索路径
+            for (const auto& assemblyInfo : dirInfo.second) {
+                klass = FindOneClass(assemblyInfo.first.c_str(),
+                                   assemblyInfo.second.c_str(),
+                                   typeName.c_str());
+                if (klass) break;
+            }
 
             if (!klass) {
                 LOGEF("!!!找不到类型: %s", typeName.c_str());
@@ -335,7 +354,7 @@ bool ConfigParser::ParseConfigFile(const std::string& filePath, Il2CppClass* kla
         return false;
     }
 
-    LOGIF("文件头tag验证成功");
+    // LOGIF("文件头tag验证成功");
 
     // 获取剩余数据大小
     size_t dataSize = head.len - 20;  // 文件头大小为20字节

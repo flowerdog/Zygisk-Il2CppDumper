@@ -439,6 +439,8 @@ void il2cpp_dump(const char *outDir) {
     // 在dump完成后解析配置
     LOGIF("开始解析配置...");
 
+    // 延迟2秒后执行
+    sleep(2);
 
     std::string inputDir = std::string("/data/data/") + GamePackageName + "/files/config/raw/";
     std::string outputDir = std::string("/data/data/") + GamePackageName + "/files/config/json/";
